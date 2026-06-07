@@ -5,6 +5,10 @@ const documentSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  description: {
+    type: String,
+    default: ''
+  },
   fileName: {
     type: String,
     required: true
@@ -28,8 +32,8 @@ const documentSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['draft', 'pending', 'signed', 'expired'],
-    default: 'draft'
+    enum: ['pending', 'signed', 'expired', 'cancelled'],
+    default: 'pending'
   },
   signatureStatus: {
     type: String,
@@ -40,6 +44,14 @@ const documentSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  requiredSignatures: {
+    type: Number,
+    default: 1
+  },
+  signaturesCompleted: {
+    type: Number,
+    default: 0
+  },
   expiresAt: {
     type: Date,
     default: () => new Date(+new Date() + 30*24*60*60*1000) // 30 days
@@ -47,7 +59,17 @@ const documentSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now
+  },
+  lastModified: {
+    type: Date,
+    default: Date.now
   }
+});
+
+// Update lastModified on save
+documentSchema.pre('save', function(next) {
+  this.lastModified = new Date();
+  next();
 });
 
 module.exports = mongoose.model('Document', documentSchema);

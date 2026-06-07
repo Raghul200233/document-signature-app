@@ -1,24 +1,22 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import authService from '../services/authService';
 
 const Dashboard = ({ setIsAuthenticated }) => {
   const [user, setUser] = useState(null);
-  const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
-    const userData = localStorage.getItem('user');
-    if (userData) {
-      setUser(JSON.parse(userData));
+    const currentUser = authService.getCurrentUser();
+    if (currentUser) {
+      setUser(currentUser);
     }
     setLoading(false);
   }, []);
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    authService.logout();
     setIsAuthenticated(false);
     navigate('/login');
   };
@@ -43,10 +41,12 @@ const Dashboard = ({ setIsAuthenticated }) => {
               </h1>
             </div>
             <div className="flex items-center space-x-4">
-              <span className="text-gray-700">Welcome, {user?.name}</span>
+              <div className="text-sm text-gray-700">
+                Welcome, <span className="font-semibold">{user?.name}</span>
+              </div>
               <button
                 onClick={handleLogout}
-                className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700"
+                className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 transition-colors"
               >
                 Logout
               </button>
@@ -60,22 +60,27 @@ const Dashboard = ({ setIsAuthenticated }) => {
         <div className="px-4 py-6 sm:px-0">
           <div className="bg-white overflow-hidden shadow-sm rounded-lg p-6">
             <div className="text-center py-12">
-              <h2 className="text-2xl font-semibold mb-4">
-                Welcome to Your Dashboard
+              <div className="mb-4">
+                <div className="h-20 w-20 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+                  <svg className="h-10 w-10 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+              </div>
+              <h2 className="text-2xl font-semibold mb-2">
+                Welcome to Your Dashboard!
               </h2>
-              <p className="text-gray-600 mb-8">
-                Upload documents, manage signatures, and track status all in one place.
+              <p className="text-gray-600 mb-4">
+                You have successfully logged in with JWT authentication.
               </p>
-              <button className="bg-indigo-600 text-white px-6 py-3 rounded-lg hover:bg-indigo-700">
-                Upload New Document
-              </button>
-            </div>
-            
-            {/* Documents section - will be implemented on Day 4 */}
-            <div className="mt-8">
-              <h3 className="text-lg font-medium mb-4">Your Documents</h3>
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center text-gray-500">
-                No documents yet. Upload your first document to get started.
+              <div className="bg-gray-50 p-4 rounded-lg max-w-md mx-auto">
+                <h3 className="font-medium text-gray-900 mb-2">Your Profile</h3>
+                <div className="text-sm text-left space-y-1">
+                  <p><span className="font-medium">Name:</span> {user?.name}</p>
+                  <p><span className="font-medium">Email:</span> {user?.email}</p>
+                  <p><span className="font-medium">Role:</span> {user?.role}</p>
+                  <p><span className="font-medium">User ID:</span> {user?.id}</p>
+                </div>
               </div>
             </div>
           </div>
