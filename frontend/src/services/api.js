@@ -1,4 +1,5 @@
 import axios from 'axios';
+import authService from './authService';
 
 const API_URL = 'http://localhost:5000/api';
 
@@ -12,7 +13,7 @@ const api = axios.create({
 // Add token to requests
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token');
+    const token = authService.getToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -64,6 +65,12 @@ export const documentAPI = {
   // Update document status
   updateStatus: async (id, statusData) => {
     const response = await api.put(`/documents/${id}/status`, statusData);
+    return response.data;
+  },
+  
+  // Get document statistics
+  getStats: async () => {
+    const response = await api.get('/documents/stats/summary');
     return response.data;
   }
 };

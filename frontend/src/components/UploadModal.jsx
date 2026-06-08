@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { documentAPI } from '../services/api';
 
 const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
@@ -7,6 +7,34 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
   const [description, setDescription] = useState('');
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
+  const [dragActive, setDragActive] = useState(false);
+
+  const handleDrag = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === 'dragenter' || e.type === 'dragover') {
+      setDragActive(true);
+    } else if (e.type === 'dragleave') {
+      setDragActive(false);
+    }
+  }, []);
+
+  const handleDrop = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    
+    const droppedFile = e.dataTransfer.files[0];
+    if (droppedFile && droppedFile.type === 'application/pdf') {
+      setFile(droppedFile);
+      setError('');
+      if (!title) {
+        setTitle(droppedFile.name.replace('.pdf', ''));
+      }
+    } else {
+      setError('Please upload a valid PDF file');
+    }
+  }, [title]);
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
@@ -46,7 +74,7 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
       setTitle('');
       setDescription('');
     } catch (err) {
-      setError(err.response?.data?.message || 'Upload failed');
+      setError(err.response?.data?.message || 'Upload failed. Please try again.');
     } finally {
       setUploading(false);
     }
@@ -74,7 +102,17 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
             <label className="block text-sm font-medium text-gray-700 mb-2">
               PDF File *
             </label>
-            <div className="flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-lg">
+            <div
+              onDragEnter={handleDrag}
+              onDragLeave={handleDrag}
+              onDragOver={handleDrag}
+              onDrop={handleDrop}
+              className={`flex justify-center px-6 pt-5 pb-6 border-2 border-dashed rounded-lg transition-colors ${
+                dragActive 
+                  ? 'border-indigo-600 bg-indigo-50' 
+                  : 'border-gray-300 bg-gray-50'
+              }`}
+            >
               <div className="space-y-1 text-center">
                 <svg
                   className="mx-auto h-12 w-12 text-gray-400"
@@ -108,9 +146,9 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
                 </div>
                 <p className="text-xs text-gray-500">PDF up to 10MB</p>
                 {file && (
-                  <p className="text-sm text-green-600">
-                    Selected: {file.name}
-                  </p>
+                  <div className="mt-2 text-sm text-green-600 bg-green-50 p-2 rounded">
+                    ✓ {file.name}
+                  </div>
                 )}
               </div>
             </div>
@@ -118,7 +156,7 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
 
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Title
+              Title *
             </label>
             <input
               type="text"
@@ -139,7 +177,7 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
               onChange={(e) => setDescription(e.target.value)}
               rows="3"
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-              placeholder="Add a description..."
+              placeholder="Add a description for this document..."
             />
           </div>
 
@@ -160,7 +198,7 @@ const UploadModal = ({ isOpen, onClose, onUploadSuccess }) => {
             <button
               type="submit"
               disabled={uploading || !file}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50"
+              className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {uploading ? 'Uploading...' : 'Upload'}
             </button>

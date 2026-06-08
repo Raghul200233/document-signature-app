@@ -8,11 +8,15 @@ const {
   getDocumentById,
   downloadDocument,
   deleteDocument,
-  updateDocumentStatus
+  updateDocumentStatus,
+  getDocumentStats
 } = require('../controllers/documentController');
 
 // All routes are protected
 router.use(protect);
+
+// Stats route (must be before /:id routes)
+router.get('/stats/summary', getDocumentStats);
 
 // Upload route with multer middleware
 router.post('/upload', upload.single('document'), uploadDocument);
@@ -20,7 +24,7 @@ router.post('/upload', upload.single('document'), uploadDocument);
 // Get all user documents
 router.get('/', getUserDocuments);
 
-// Get, update, delete specific document
+// Document by ID routes
 router.route('/:id')
   .get(getDocumentById)
   .delete(deleteDocument);

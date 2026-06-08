@@ -28,7 +28,7 @@ const DocumentCard = ({ document, onDelete, onStatusUpdate }) => {
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', document.fileName);
+      link.setAttribute('download', document.originalName);
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -71,72 +71,98 @@ const DocumentCard = ({ document, onDelete, onStatusUpdate }) => {
     return colors[status] || 'bg-gray-100 text-gray-800';
   };
 
+  const getStatusIcon = (status) => {
+    switch(status) {
+      case 'pending':
+        return '⏳';
+      case 'signed':
+        return '✓';
+      case 'expired':
+        return '⌛';
+      default:
+        return '📄';
+    }
+  };
+
   return (
-    <div className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
-      <div className="flex items-start justify-between">
-        <div className="flex-1">
-          <div className="flex items-center space-x-2 mb-2">
-            <svg className="h-8 w-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-            </svg>
-            <h3 className="text-lg font-semibold text-gray-900">{document.title}</h3>
+    <div className="bg-white rounded-lg shadow-md hover:shadow-lg transition-all duration-300 overflow-hidden">
+      <div className="p-6">
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex items-center space-x-3">
+            <div className="text-2xl">{getStatusIcon(document.status)}</div>
+            <h3 className="text-lg font-semibold text-gray-900 line-clamp-1">
+              {document.title}
+            </h3>
           </div>
           
-          {document.description && (
-            <p className="text-gray-600 text-sm mb-3">{document.description}</p>
-          )}
-          
-          <div className="flex flex-wrap gap-2 mb-3">
-            <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(document.status)}`}>
-              {document.status}
-            </span>
-            <span className={`px-2 py-1 text-xs rounded-full ${getSignatureStatusColor(document.signatureStatus)}`}>
-              {document.signatureStatus.replace('_', ' ')}
-            </span>
+          <div className="relative">
+            <button
+              onClick={() => setShowOptions(!showOptions)}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+              </svg>
+            </button>
+            
+            {showOptions && (
+              <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-10 border">
+                <button
+                  onClick={handleDownload}
+                  disabled={downloading}
+                  className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                >
+                  {downloading ? 'Downloading...' : 'Download'}
+                </button>
+                <button
+                  onClick={handleDelete}
+                  className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
+                >
+                  Delete
+                </button>
+              </div>
+            )}
           </div>
-          
-          <div className="text-sm text-gray-500 space-y-1">
-            <div className="flex items-center space-x-2">
+        </div>
+        
+        {document.description && (
+          <p className="text-gray-600 text-sm mb-3 line-clamp-2">
+            {document.description}
+          </p>
+        )}
+        
+        <div className="flex flex-wrap gap-2 mb-3">
+          <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(document.status)}`}>
+            {document.status}
+          </span>
+          <span className={`px-2 py-1 text-xs rounded-full ${getSignatureStatusColor(document.signatureStatus)}`}>
+            {document.signatureStatus.replace('_', ' ')}
+          </span>
+        </div>
+        
+        <div className="text-sm text-gray-500 space-y-1">
+          <div className="flex items-center justify-between">
+            <span className="flex items-center space-x-1">
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
               </svg>
               <span>{formatFileSize(document.fileSize)}</span>
-            </div>
-            <div className="flex items-center space-x-2">
+            </span>
+            <span className="flex items-center space-x-1">
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
-              <span>Uploaded: {formatDate(document.createdAt)}</span>
-            </div>
+              <span>{formatDate(document.createdAt)}</span>
+            </span>
           </div>
         </div>
-        
-        <div className="relative">
-          <button
-            onClick={() => setShowOptions(!showOptions)}
-            className="text-gray-400 hover:text-gray-600"
-          >
-            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-            </svg>
-          </button>
-          
-          {showOptions && (
-            <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-10 border">
-              <button
-                onClick={handleDownload}
-                disabled={downloading}
-                className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-              >
-                {downloading ? 'Downloading...' : 'Download'}
-              </button>
-              <button
-                onClick={handleDelete}
-                className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
-              >
-                Delete
-              </button>
-            </div>
+      </div>
+      
+      <div className="bg-gray-50 px-6 py-3 border-t">
+        <div className="flex justify-between text-xs text-gray-500">
+          <span>ID: {document._id.slice(-6)}</span>
+          {document.daysUntilExpiration > 0 && (
+            <span>Expires in {document.daysUntilExpiration} days</span>
           )}
         </div>
       </div>
