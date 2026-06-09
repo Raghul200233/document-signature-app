@@ -8,7 +8,6 @@ const {
   getDocumentById,
   downloadDocument,
   deleteDocument,
-  updateDocumentStatus,
   getDocumentStats
 } = require('../controllers/documentController');
 
@@ -31,8 +30,5 @@ router.route('/:id')
 
 // Download document
 router.get('/:id/download', downloadDocument);
-
-// Update document status
-router.put('/:id/status', updateDocumentStatus);
 
 module.exports = router;

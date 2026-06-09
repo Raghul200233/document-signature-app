@@ -4,25 +4,16 @@ const {
   register,
   login,
   getMe,
-  logout,
-  updateDetails,
-  updatePassword
+  logout
 } = require('../controllers/authController');
 const { protect } = require('../middleware/auth');
-const {
-  validateRegister,
-  validateLogin,
-  validateUpdatePassword
-} = require('../middleware/validation');
 
 // Public routes
-router.post('/register', validateRegister, register);
-router.post('/login', validateLogin, login);
+router.post('/register', register);
+router.post('/login', login);
 
 // Protected routes
 router.get('/me', protect, getMe);
-router.get('/logout', protect, logout);
-router.put('/updatedetails', protect, updateDetails);
-router.put('/updatepassword', protect, validateUpdatePassword, updatePassword);
+router.post('/logout', protect, logout);
 
 module.exports = router;

@@ -1,54 +1,54 @@
-const jwt = require('jsonwebtoken');
-const User = require('../models/User');
+const supabase = require('../config/supabase');
 
 const protect = async (req, res, next) => {
   let token;
 
-  // Check for token in headers
   if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
     try {
-      // Get token from header
       token = req.headers.authorization.split(' ')[1];
-
-      // Verify token
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-      // Get user from the token
-      req.user = await User.findById(decoded.id).select('-password');
-
-      if (!req.user) {
+      
+      console.log('Verifying token...'); // Debug log
+      
+      // Verify token with Supabase
+      const { data: { user }, error } = await supabase.auth.getUser(token);
+      
+      if (error || !user) {
+        console.error('Token verification failed:', error);
         return res.status(401).json({ 
           success: false, 
-          message: 'User not found' 
+          message: 'Not authorized, token invalid' 
         });
       }
-
+      
+      console.log('User authenticated:', user.id);
+      
+      // Get user profile from database
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+      
+      if (profileError) {
+        console.error('Profile fetch error:', profileError);
+      }
+      
+      req.user = {
+        id: user.id,
+        email: user.email,
+        ...profile
+      };
+      
       next();
     } catch (error) {
-      console.error(error);
-      
-      if (error.name === 'JsonWebTokenError') {
-        return res.status(401).json({ 
-          success: false, 
-          message: 'Invalid token' 
-        });
-      }
-      
-      if (error.name === 'TokenExpiredError') {
-        return res.status(401).json({ 
-          success: false, 
-          message: 'Token expired' 
-        });
-      }
-      
-      return res.status(401).json({ 
+      console.error('Auth middleware error:', error);
+      res.status(401).json({ 
         success: false, 
-        message: 'Not authorized' 
+        message: 'Not authorized, token failed' 
       });
     }
-  }
-
-  if (!token) {
+  } else {
+    console.log('No token provided');
     res.status(401).json({ 
       success: false, 
       message: 'Not authorized, no token' 
@@ -56,17 +56,4 @@ const protect = async (req, res, next) => {
   }
 };
 
-// Grant access to specific roles
-const authorize = (...roles) => {
-  return (req, res, next) => {
-    if (!roles.includes(req.user.role)) {
-      return res.status(403).json({ 
-        success: false, 
-        message: `User role ${req.user.role} is not authorized to access this route` 
-      });
-    }
-    next();
-  };
-};
-
-module.exports = { protect, authorize };
+module.exports = { protect };
