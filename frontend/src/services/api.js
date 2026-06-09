@@ -34,8 +34,8 @@ export const documentAPI = {
     return response.data;
   },
   
-  getAll: async () => {
-    const response = await api.get('/documents');
+  getAll: async (params = '') => {
+    const response = await api.get(`/documents${params ? `?${params}` : ''}`);
     return response.data;
   },
   
@@ -56,8 +56,23 @@ export const documentAPI = {
     return response;
   },
   
+  updateStatus: async (id, statusData) => {
+    const response = await api.put(`/documents/${id}/status`, statusData);
+    return response.data;
+  },
+  
   getStats: async () => {
     const response = await api.get('/documents/stats/summary');
+    return response.data;
+  },
+  
+  search: async (query) => {
+    const response = await api.get(`/documents/search?q=${query}`);
+    return response.data;
+  },
+  
+  getRecent: async (limit = 5) => {
+    const response = await api.get(`/documents/recent?limit=${limit}`);
     return response.data;
   }
 };

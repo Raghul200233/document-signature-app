@@ -202,6 +202,137 @@ const downloadDocument = async (req, res) => {
   }
 };
 
+// @desc    Get documents with filters, search, and pagination
+// @route   GET /api/documents
+// @access  Private
+const getUserDocuments = async (req, res) => {
+  try {
+    const {
+      page = 1,
+      limit = 10,
+      status,
+      signatureStatus,
+      search,
+      sortBy = 'createdAt',
+      sortOrder = 'desc'
+    } = req.query;
+
+    // Build query
+    let query = supabase
+      .from('documents')
+      .select('*', { count: 'exact' })
+      .eq('owner_id', req.user.id);
+
+    // Apply filters
+    if (status && status !== 'all') {
+      query = query.eq('status', status);
+    }
+    
+    if (signatureStatus && signatureStatus !== 'all') {
+      query = query.eq('signature_status', signatureStatus);
+    }
+    
+    if (search) {
+      query = query.or(`title.ilike.%${search}%,description.ilike.%${search}%`);
+    }
+
+    // Apply sorting
+    query = query.order(sortBy, { ascending: sortOrder === 'asc' });
+
+    // Apply pagination
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
+    query = query.range(from, to);
+
+    const { data: documents, error, count } = await query;
+
+    if (error) throw error;
+
+    res.json({
+      success: true,
+      documents,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: count,
+        pages: Math.ceil(count / limit)
+      }
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error' 
+    });
+  }
+};
+
+// @desc    Search documents
+// @route   GET /api/documents/search
+// @access  Private
+const searchDocuments = async (req, res) => {
+  try {
+    const { q } = req.query;
+    
+    if (!q) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Search query is required' 
+      });
+    }
+
+    const { data: documents, error } = await supabase
+      .from('documents')
+      .select('*')
+      .eq('owner_id', req.user.id)
+      .or(`title.ilike.%${q}%,description.ilike.%${q}%`)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    res.json({
+      success: true,
+      documents,
+      count: documents.length
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error' 
+    });
+  }
+};
+
+// @desc    Get recent documents
+// @route   GET /api/documents/recent
+// @access  Private
+const getRecentDocuments = async (req, res) => {
+  try {
+    const { limit = 5 } = req.query;
+
+    const { data: documents, error } = await supabase
+      .from('documents')
+      .select('*')
+      .eq('owner_id', req.user.id)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (error) throw error;
+
+    res.json({
+      success: true,
+      documents
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error' 
+    });
+  }
+};
+
 // @desc    Delete document
 // @route   DELETE /api/documents/:id
 // @access  Private
