@@ -1,3 +1,4 @@
+// backend/src/controllers/documentController.js
 const supabase = require('../config/supabase');
 const fs = require('fs');
 const path = require('path');
@@ -77,7 +78,7 @@ const uploadDocument = async (req, res) => {
       document
     });
   } catch (error) {
-    console.error(error);
+    console.error('Upload error:', error);
     // Clean up local file if exists
     if (req.file && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
@@ -90,29 +91,70 @@ const uploadDocument = async (req, res) => {
   }
 };
 
-// @desc    Get all documents for logged-in user
+// @desc    Get all documents for logged-in user with filters, search, and pagination
 // @route   GET /api/documents
 // @access  Private
 const getUserDocuments = async (req, res) => {
   try {
-    const { data: documents, error } = await supabase
+    const {
+      page = 1,
+      limit = 10,
+      status,
+      signatureStatus,
+      search,
+      sortBy = 'created_at',  // Changed from 'createdAt' to 'created_at'
+      sortOrder = 'desc'
+    } = req.query;
+
+    // Build query
+    let query = supabase
       .from('documents')
-      .select('*')
-      .eq('owner_id', req.user.id)
-      .order('created_at', { ascending: false });
+      .select('*', { count: 'exact' })
+      .eq('owner_id', req.user.id);
+
+    // Apply filters
+    if (status && status !== 'all') {
+      query = query.eq('status', status);
+    }
     
+    if (signatureStatus && signatureStatus !== 'all') {
+      query = query.eq('signature_status', signatureStatus);
+    }
+    
+    if (search) {
+      query = query.or(`title.ilike.%${search}%,description.ilike.%${search}%`);
+    }
+
+    // Apply sorting - use snake_case column names
+    const validSortColumns = ['created_at', 'updated_at', 'title', 'file_size', 'status'];
+    const sortColumn = validSortColumns.includes(sortBy) ? sortBy : 'created_at';
+    query = query.order(sortColumn, { ascending: sortOrder === 'asc' });
+
+    // Apply pagination
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
+    query = query.range(from, to);
+
+    const { data: documents, error, count } = await query;
+
     if (error) throw error;
-    
+
     res.json({
       success: true,
-      count: documents.length,
-      documents
+      documents,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: count,
+        pages: Math.ceil(count / limit)
+      }
     });
   } catch (error) {
-    console.error(error);
+    console.error('Get documents error:', error);
     res.status(500).json({ 
       success: false, 
-      message: 'Server error' 
+      message: 'Server error',
+      error: error.message 
     });
   }
 };
@@ -122,10 +164,25 @@ const getUserDocuments = async (req, res) => {
 // @access  Private
 const getDocumentById = async (req, res) => {
   try {
+    const { id } = req.params;
+
+    // Get document with signature count
     const { data: document, error } = await supabase
       .from('documents')
-      .select('*')
-      .eq('id', req.params.id)
+      .select(`
+        *,
+        signatures:id (
+          id,
+          signer_email,
+          signer_name,
+          status,
+          signed_at,
+          position_x,
+          position_y,
+          page_number
+        )
+      `)
+      .eq('id', id)
       .single();
     
     if (error || !document) {
@@ -143,15 +200,27 @@ const getDocumentById = async (req, res) => {
       });
     }
     
+    // Calculate signature progress
+    const totalSignatures = document.signatures?.length || 0;
+    const completedSignatures = document.signatures?.filter(s => s.status === 'signed').length || 0;
+    
     res.json({
       success: true,
-      document
+      document: {
+        ...document,
+        signature_progress: {
+          total: totalSignatures,
+          completed: completedSignatures,
+          percentage: totalSignatures > 0 ? (completedSignatures / totalSignatures) * 100 : 0
+        }
+      }
     });
   } catch (error) {
-    console.error(error);
+    console.error('Get document error:', error);
     res.status(500).json({ 
       success: false, 
-      message: 'Server error' 
+      message: 'Server error',
+      error: error.message 
     });
   }
 };
@@ -161,10 +230,12 @@ const getDocumentById = async (req, res) => {
 // @access  Private
 const downloadDocument = async (req, res) => {
   try {
+    const { id } = req.params;
+
     const { data: document, error } = await supabase
       .from('documents')
       .select('*')
-      .eq('id', req.params.id)
+      .eq('id', id)
       .single();
     
     if (error || !document) {
@@ -190,79 +261,206 @@ const downloadDocument = async (req, res) => {
       throw downloadError;
     }
     
+    // Create audit log
+    await supabase.from('audit_logs').insert({
+      user_id: req.user.id,
+      document_id: document.id,
+      action: 'download',
+      details: { filename: document.original_name },
+      ip_address: req.ip,
+      user_agent: req.headers['user-agent']
+    });
+    
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${document.original_name}"`);
     res.send(data);
   } catch (error) {
-    console.error(error);
+    console.error('Download error:', error);
     res.status(500).json({ 
       success: false, 
-      message: 'Server error' 
+      message: 'Server error',
+      error: error.message 
     });
   }
 };
 
-// @desc    Get documents with filters, search, and pagination
-// @route   GET /api/documents
+// @desc    Delete document
+// @route   DELETE /api/documents/:id
 // @access  Private
-const getUserDocuments = async (req, res) => {
+const deleteDocument = async (req, res) => {
   try {
-    const {
-      page = 1,
-      limit = 10,
-      status,
-      signatureStatus,
-      search,
-      sortBy = 'createdAt',
-      sortOrder = 'desc'
-    } = req.query;
+    const { id } = req.params;
 
-    // Build query
-    let query = supabase
+    const { data: document, error: fetchError } = await supabase
       .from('documents')
-      .select('*', { count: 'exact' })
-      .eq('owner_id', req.user.id);
-
-    // Apply filters
-    if (status && status !== 'all') {
-      query = query.eq('status', status);
+      .select('*')
+      .eq('id', id)
+      .single();
+    
+    if (fetchError || !document) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Document not found' 
+      });
     }
     
-    if (signatureStatus && signatureStatus !== 'all') {
-      query = query.eq('signature_status', signatureStatus);
+    if (document.owner_id !== req.user.id) {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Not authorized' 
+      });
     }
     
-    if (search) {
-      query = query.or(`title.ilike.%${search}%,description.ilike.%${search}%`);
+    // Delete signatures first (due to foreign key constraint)
+    const { error: sigError } = await supabase
+      .from('signatures')
+      .delete()
+      .eq('document_id', id);
+    
+    if (sigError) {
+      console.error('Error deleting signatures:', sigError);
     }
-
-    // Apply sorting
-    query = query.order(sortBy, { ascending: sortOrder === 'asc' });
-
-    // Apply pagination
-    const from = (page - 1) * limit;
-    const to = from + limit - 1;
-    query = query.range(from, to);
-
-    const { data: documents, error, count } = await query;
-
-    if (error) throw error;
-
-    res.json({
-      success: true,
-      documents,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total: count,
-        pages: Math.ceil(count / limit)
-      }
+    
+    // Delete from database
+    const { error: deleteError } = await supabase
+      .from('documents')
+      .delete()
+      .eq('id', id);
+    
+    if (deleteError) throw deleteError;
+    
+    // Delete from storage
+    const { error: storageError } = await supabase.storage
+      .from('documents')
+      .remove([document.file_name]);
+    
+    if (storageError) {
+      console.error('Error deleting from storage:', storageError);
+    }
+    
+    // Create audit log
+    await supabase.from('audit_logs').insert({
+      user_id: req.user.id,
+      document_id: document.id,
+      action: 'delete',
+      details: { filename: document.original_name },
+      ip_address: req.ip,
+      user_agent: req.headers['user-agent']
+    });
+    
+    res.json({ 
+      success: true, 
+      message: 'Document deleted successfully' 
     });
   } catch (error) {
-    console.error(error);
+    console.error('Delete error:', error);
     res.status(500).json({ 
       success: false, 
-      message: 'Server error' 
+      message: 'Server error',
+      error: error.message 
+    });
+  }
+};
+
+// @desc    Update document status
+// @route   PUT /api/documents/:id/status
+// @access  Private
+const updateDocumentStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, signatureStatus } = req.body;
+    
+    const { data: document, error: fetchError } = await supabase
+      .from('documents')
+      .select('*')
+      .eq('id', id)
+      .single();
+    
+    if (fetchError || !document) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Document not found' 
+      });
+    }
+    
+    if (document.owner_id !== req.user.id) {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Not authorized' 
+      });
+    }
+    
+    const updateData = {};
+    if (status) updateData.status = status;
+    if (signatureStatus) updateData.signature_status = signatureStatus;
+    
+    const { data: updated, error } = await supabase
+      .from('documents')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+    
+    if (error) throw error;
+    
+    // Create audit log
+    await supabase.from('audit_logs').insert({
+      user_id: req.user.id,
+      document_id: document.id,
+      action: 'status_update',
+      details: { old_status: document.status, new_status: status, old_signature_status: document.signature_status, new_signature_status: signatureStatus },
+      ip_address: req.ip,
+      user_agent: req.headers['user-agent']
+    });
+    
+    res.json({ 
+      success: true, 
+      document: updated,
+      message: 'Status updated successfully'
+    });
+  } catch (error) {
+    console.error('Status update error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error',
+      error: error.message 
+    });
+  }
+};
+
+// @desc    Get document statistics
+// @route   GET /api/documents/stats/summary
+// @access  Private
+const getDocumentStats = async (req, res) => {
+  try {
+    const { data: documents, error } = await supabase
+      .from('documents')
+      .select('status, signature_status')
+      .eq('owner_id', req.user.id);
+    
+    if (error) throw error;
+    
+    const stats = {
+      total: documents.length,
+      pending: documents.filter(d => d.status === 'pending').length,
+      signed: documents.filter(d => d.status === 'signed').length,
+      expired: documents.filter(d => d.status === 'expired').length,
+      cancelled: documents.filter(d => d.status === 'cancelled').length,
+      inProgress: documents.filter(d => d.signature_status === 'in_progress').length,
+      completed: documents.filter(d => d.signature_status === 'completed').length,
+      notStarted: documents.filter(d => d.signature_status === 'not_started').length
+    };
+    
+    res.json({
+      success: true,
+      stats
+    });
+  } catch (error) {
+    console.error('Stats error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error',
+      error: error.message 
     });
   }
 };
@@ -272,7 +470,7 @@ const getUserDocuments = async (req, res) => {
 // @access  Private
 const searchDocuments = async (req, res) => {
   try {
-    const { q } = req.query;
+    const { q, limit = 20 } = req.query;
     
     if (!q) {
       return res.status(400).json({ 
@@ -286,20 +484,23 @@ const searchDocuments = async (req, res) => {
       .select('*')
       .eq('owner_id', req.user.id)
       .or(`title.ilike.%${q}%,description.ilike.%${q}%`)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(limit);
 
     if (error) throw error;
 
     res.json({
       success: true,
       documents,
-      count: documents.length
+      count: documents.length,
+      searchTerm: q
     });
   } catch (error) {
-    console.error(error);
+    console.error('Search error:', error);
     res.status(500).json({ 
       success: false, 
-      message: 'Server error' 
+      message: 'Server error',
+      error: error.message 
     });
   }
 };
@@ -325,101 +526,45 @@ const getRecentDocuments = async (req, res) => {
       documents
     });
   } catch (error) {
-    console.error(error);
+    console.error('Recent documents error:', error);
     res.status(500).json({ 
       success: false, 
-      message: 'Server error' 
+      message: 'Server error',
+      error: error.message 
     });
   }
 };
 
-// @desc    Delete document
-// @route   DELETE /api/documents/:id
+// @desc    Get documents by status
+// @route   GET /api/documents/status/:status
 // @access  Private
-const deleteDocument = async (req, res) => {
+const getDocumentsByStatus = async (req, res) => {
   try {
-    const { data: document, error: fetchError } = await supabase
-      .from('documents')
-      .select('*')
-      .eq('id', req.params.id)
-      .single();
-    
-    if (fetchError || !document) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Document not found' 
-      });
-    }
-    
-    if (document.owner_id !== req.user.id) {
-      return res.status(403).json({ 
-        success: false, 
-        message: 'Not authorized' 
-      });
-    }
-    
-    // Delete from database
-    const { error: deleteError } = await supabase
-      .from('documents')
-      .delete()
-      .eq('id', req.params.id);
-    
-    if (deleteError) throw deleteError;
-    
-    // Delete from storage
-    await supabase.storage.from('documents').remove([document.file_name]);
-    
-    // Create audit log
-    await supabase.from('audit_logs').insert({
-      user_id: req.user.id,
-      document_id: document.id,
-      action: 'delete',
-      details: { filename: document.original_name },
-      ip_address: req.ip,
-      user_agent: req.headers['user-agent']
-    });
-    
-    res.json({ 
-      success: true, 
-      message: 'Document deleted successfully' 
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Server error' 
-    });
-  }
-};
+    const { status } = req.params;
+    const { limit = 50 } = req.query;
 
-// @desc    Get document statistics
-// @route   GET /api/documents/stats/summary
-// @access  Private
-const getDocumentStats = async (req, res) => {
-  try {
     const { data: documents, error } = await supabase
       .from('documents')
-      .select('status, signature_status')
-      .eq('owner_id', req.user.id);
-    
+      .select('*')
+      .eq('owner_id', req.user.id)
+      .eq('status', status)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
     if (error) throw error;
-    
-    const stats = {
-      total: documents.length,
-      pending: documents.filter(d => d.status === 'pending').length,
-      signed: documents.filter(d => d.status === 'signed').length,
-      inProgress: documents.filter(d => d.signature_status === 'in_progress').length
-    };
-    
+
     res.json({
       success: true,
-      stats
+      documents,
+      count: documents.length,
+      status
     });
   } catch (error) {
-    console.error(error);
+    console.error('Get by status error:', error);
     res.status(500).json({ 
       success: false, 
-      message: 'Server error' 
+      message: 'Server error',
+      error: error.message 
     });
   }
 };
@@ -430,5 +575,9 @@ module.exports = {
   getDocumentById,
   downloadDocument,
   deleteDocument,
-  getDocumentStats
+  updateDocumentStatus,
+  getDocumentStats,
+  searchDocuments,
+  getRecentDocuments,
+  getDocumentsByStatus
 };

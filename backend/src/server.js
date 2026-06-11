@@ -22,10 +22,12 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 // Import routes
 const authRoutes = require('./routes/authRoutes');
 const documentRoutes = require('./routes/documentRoutes');
+const signatureRoutes = require('./routes/signatureRoutes');
 
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/documents', documentRoutes);
+app.use('/api/signatures', signatureRoutes);
 
 // Health check route
 app.get('/api/health', (req, res) => {

@@ -7,13 +7,23 @@ const protect = async (req, res, next) => {
     try {
       token = req.headers.authorization.split(' ')[1];
       
-      console.log('Verifying token...'); // Debug log
+      console.log('Verifying token...');
       
       // Verify token with Supabase
       const { data: { user }, error } = await supabase.auth.getUser(token);
       
       if (error || !user) {
         console.error('Token verification failed:', error);
+        
+        // Handle expired token specifically
+        if (error?.message?.includes('expired')) {
+          return res.status(401).json({ 
+            success: false, 
+            message: 'Token expired. Please login again.',
+            code: 'TOKEN_EXPIRED'
+          });
+        }
+        
         return res.status(401).json({ 
           success: false, 
           message: 'Not authorized, token invalid' 

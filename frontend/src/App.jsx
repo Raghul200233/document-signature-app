@@ -4,6 +4,9 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import authService from './services/authService';
+import DocumentDetail from './pages/DocumentDetail';
+
+<Route path="/document/:id" element={<DocumentDetail />} />
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
