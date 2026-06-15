@@ -157,18 +157,43 @@ export const signatureAPI = {
     return response.data;
   },
 
-  updatePosition: async (id, positionData) => {
-    const response = await api.put(`/signatures/${id}`, positionData);
+  submitSignature: async (token, signatureText, style) => {
+    const response = await api.post(`/signatures/${token}/sign`, { 
+      signatureText, 
+      style 
+    });
     return response.data;
   },
 
   delete: async (id) => {
     const response = await api.delete(`/signatures/${id}`);
     return response.data;
+  }
+};
+
+// Add to api.js
+export const pdfAPI = {
+  // Sign document with specific signature
+  signDocument: async (documentId, signatureId) => {
+    const response = await api.post('/pdf/sign', { documentId, signatureId });
+    return response.data;
   },
 
-  submitSignature: async (token, signatureData) => {
-    const response = await api.post(`/signatures/${token}/sign`, { signatureData });
+  // Sign document with all signatures
+  signAllSignatures: async (documentId) => {
+    const response = await api.post(`/pdf/${documentId}/sign-all`);
+    return response.data;
+  },
+
+  // Get signed PDF status
+  getSignedPDFStatus: async (documentId) => {
+    const response = await api.get(`/pdf/${documentId}/status`);
+    return response.data;
+  },
+
+  // Download signed PDF
+  downloadSignedPDF: async (documentId) => {
+    const response = await api.get(`/pdf/${documentId}/download`);
     return response.data;
   }
 };

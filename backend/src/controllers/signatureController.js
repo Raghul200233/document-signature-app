@@ -2,114 +2,28 @@ const supabase = require('../config/supabase');
 const crypto = require('crypto');
 
 // @desc    Create signature placement
-// @route   POST /api/signatures
-// @access  Private
 const createSignature = async (req, res) => {
   try {
     const {
       documentId,
-      signerEmail,
       signerName,
-      positionX,
-      positionY,
-      pageNumber = 1,
-      width = 200,
-      height = 60
+      pageNumber = 1
     } = req.body;
+
+    console.log('Creating signature:', { documentId, signerName });
+
+    if (!documentId || !signerName) {
+      return res.status(400).json({
+        success: false,
+        message: 'Document ID and signer name are required'
+      });
+    }
 
     // Verify document ownership
     const { data: document, error: docError } = await supabase
       .from('documents')
       .select('*')
       .eq('id', documentId)
-      .eq('owner_id', req.user.id)
-      .single();
-
-    if (docError || !document) {
-      return res.status(404).json({
-        success: false,
-        message: 'Document not found or unauthorized'
-      });
-    }
-
-    // Generate unique token for signature link
-    const token = crypto.randomBytes(32).toString('hex');
-
-    // Create signature record
-    const { data: signature, error } = await supabase
-      .from('signatures')
-      .insert({
-        document_id: documentId,
-        signer_email: signerEmail,
-        signer_name: signerName,
-        signature_data: '', // Will be filled when actually signed
-        position_x: positionX,
-        position_y: positionY,
-        page_number: pageNumber,
-        width: width,
-        height: height,
-        status: 'pending',
-        token: token
-      })
-      .select()
-      .single();
-
-    if (error) throw error;
-
-    // Update document signature status
-    await supabase
-      .from('documents')
-      .update({ 
-        signature_status: 'in_progress',
-        required_signatures: supabase.raw('required_signatures + 1')
-      })
-      .eq('id', documentId);
-
-    // Create audit log
-    await supabase.from('audit_logs').insert({
-      user_id: req.user.id,
-      document_id: documentId,
-      action: 'signature_created',
-      details: { signer_email: signerEmail, position: { x: positionX, y: positionY } },
-      ip_address: req.ip,
-      user_agent: req.headers['user-agent']
-    });
-
-    res.status(201).json({
-      success: true,
-      signature: {
-        id: signature.id,
-        signerEmail: signature.signer_email,
-        signerName: signature.signer_name,
-        position: { x: signature.position_x, y: signature.position_y },
-        pageNumber: signature.page_number,
-        token: signature.token,
-        status: signature.status
-      }
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
-  }
-};
-
-// @desc    Get all signatures for a document
-// @route   GET /api/signatures/document/:documentId
-// @access  Private
-const getDocumentSignatures = async (req, res) => {
-  try {
-    const { documentId } = req.params;
-
-    // Verify ownership
-    const { data: document, error: docError } = await supabase
-      .from('documents')
-      .select('*')
-      .eq('id', documentId)
-      .eq('owner_id', req.user.id)
       .single();
 
     if (docError || !document) {
@@ -119,50 +33,79 @@ const getDocumentSignatures = async (req, res) => {
       });
     }
 
-    // Get signatures
-    const { data: signatures, error } = await supabase
+    if (document.owner_id !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized'
+      });
+    }
+
+    // Generate unique token
+    const token = crypto.randomBytes(32).toString('hex');
+
+    // Create signature record
+    const { data: signature, error: insertError } = await supabase
       .from('signatures')
-      .select('*')
-      .eq('document_id', documentId)
-      .order('created_at', { ascending: true });
+      .insert({
+        document_id: documentId,
+        signer_name: signerName,
+        signer_email: `${signerName.replace(/\s/g, '').toLowerCase()}@signature.local`,
+        signature_data: '',
+        signature_text: '',
+        signature_style: 'classic',
+        position_x: 100,
+        position_y: 750,
+        page_number: pageNumber,
+        width: 300,
+        height: 80,
+        status: 'pending',
+        token: token
+      })
+      .select()
+      .single();
 
-    if (error) throw error;
+    if (insertError) {
+      console.error('Insert error:', insertError);
+      return res.status(500).json({
+        success: false,
+        message: 'Database error: ' + insertError.message
+      });
+    }
 
-    res.json({
+    console.log('Signature created:', signature.id);
+
+    res.status(201).json({
       success: true,
-      signatures: signatures.map(s => ({
-        id: s.id,
-        signerEmail: s.signer_email,
-        signerName: s.signer_name,
-        position: { x: s.position_x, y: s.position_y },
-        pageNumber: s.page_number,
-        status: s.status,
-        signedAt: s.signed_at,
-        width: s.width,
-        height: s.height
-      }))
+      signature: {
+        id: signature.id,
+        signerName: signature.signer_name,
+        token: signature.token,
+        status: signature.status
+      }
     });
+
   } catch (error) {
-    console.error(error);
+    console.error('Create signature error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error'
+      message: 'Server error',
+      error: error.message
     });
   }
 };
 
 // @desc    Submit signature (sign the document)
-// @route   POST /api/signatures/:token/sign
-// @access  Public (via token)
 const submitSignature = async (req, res) => {
   try {
     const { token } = req.params;
-    const { signatureData } = req.body; // Base64 signature image
+    const { signatureText, style } = req.body;
 
-    if (!signatureData) {
+    console.log('Submitting signature for token:', token, 'Style:', style);
+
+    if (!signatureText) {
       return res.status(400).json({
         success: false,
-        message: 'Signature data is required'
+        message: 'Signature text is required'
       });
     }
 
@@ -187,109 +130,126 @@ const submitSignature = async (req, res) => {
       });
     }
 
-    // Update signature
+    // Update signature with text and style
     const { error: updateError } = await supabase
       .from('signatures')
       .update({
-        signature_data: signatureData,
+        signature_text: signatureText,
+        signature_style: style || 'classic',
         status: 'signed',
         signed_at: new Date().toISOString(),
-        ip_address: req.ip,
-        user_agent: req.headers['user-agent']
+        ip_address: req.ip || 'unknown',
+        user_agent: req.headers['user-agent'] || 'unknown'
       })
       .eq('id', signature.id);
 
-    if (updateError) throw updateError;
-
-    // Update document signature count
-    const { data: updatedDoc } = await supabase
-      .from('documents')
-      .update({
-        signatures_completed: supabase.raw('signatures_completed + 1')
-      })
-      .eq('id', signature.document_id)
-      .select()
-      .single();
-
-    // Check if all signatures are completed
-    if (updatedDoc.signatures_completed >= updatedDoc.required_signatures) {
-      await supabase
-        .from('documents')
-        .update({
-          status: 'signed',
-          signature_status: 'completed'
-        })
-        .eq('id', signature.document_id);
+    if (updateError) {
+      console.error('Update error:', updateError);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to update signature: ' + updateError.message
+      });
     }
 
-    // Create audit log
-    await supabase.from('audit_logs').insert({
-      document_id: signature.document_id,
-      action: 'signature_submitted',
-      details: { signer_email: signature.signer_email },
-      ip_address: req.ip,
-      user_agent: req.headers['user-agent']
-    });
+    // Get current signatures count
+    const { data: allSignatures, error: countError } = await supabase
+      .from('signatures')
+      .select('id')
+      .eq('document_id', signature.document_id)
+      .eq('status', 'signed');
+
+    const signedCount = allSignatures?.length || 1;
+    
+    // Get document to check required signatures
+    const { data: document, error: docError } = await supabase
+      .from('documents')
+      .select('required_signatures')
+      .eq('id', signature.document_id)
+      .single();
+
+    // Update document signature count
+    await supabase
+      .from('documents')
+      .update({
+        signatures_completed: signedCount
+      })
+      .eq('id', signature.document_id);
+
+    // Check if all signatures are completed
+    let signedPdfUrl = null;
+    const requiredSignatures = document?.required_signatures || 1;
+    
+    if (signedCount >= requiredSignatures) {
+      try {
+        const { generateSignedPDFWithAllSignatures } = require('../services/pdfService');
+        const result = await generateSignedPDFWithAllSignatures(signature.document_id);
+        signedPdfUrl = result.signedPdfUrl;
+        
+        await supabase
+          .from('documents')
+          .update({
+            status: 'signed',
+            signature_status: 'completed'
+          })
+          .eq('id', signature.document_id);
+      } catch (pdfError) {
+        console.error('PDF generation error:', pdfError);
+      }
+    }
 
     res.json({
       success: true,
-      message: 'Document signed successfully!'
+      message: 'Signature saved successfully!',
+      signedPdfUrl: signedPdfUrl
     });
+
   } catch (error) {
-    console.error(error);
+    console.error('Submit signature error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error'
+      message: 'Server error: ' + error.message
     });
   }
 };
 
-// @desc    Update signature position
-// @route   PUT /api/signatures/:id
-// @access  Private
-const updateSignaturePosition = async (req, res) => {
+// @desc    Get signatures for a document
+const getDocumentSignatures = async (req, res) => {
   try {
-    const { id } = req.params;
-    const { positionX, positionY, pageNumber } = req.body;
+    const { documentId } = req.params;
 
-    const { data: signature, error: findError } = await supabase
+    console.log('Fetching signatures for document:', documentId);
+
+    const { data: signatures, error: sigError } = await supabase
       .from('signatures')
-      .select('*, documents(*)')
-      .eq('id', id)
-      .single();
+      .select('*')
+      .eq('document_id', documentId)
+      .order('created_at', { ascending: true });
 
-    if (findError || !signature) {
-      return res.status(404).json({
+    if (sigError) {
+      return res.status(500).json({
         success: false,
-        message: 'Signature not found'
+        message: 'Error fetching signatures'
       });
     }
 
-    // Verify ownership through document
-    if (signature.documents.owner_id !== req.user.id) {
-      return res.status(403).json({
-        success: false,
-        message: 'Unauthorized'
-      });
-    }
-
-    const { error } = await supabase
-      .from('signatures')
-      .update({
-        position_x: positionX,
-        position_y: positionY,
-        page_number: pageNumber
-      })
-      .eq('id', id);
-
-    if (error) throw error;
+    const formattedSignatures = signatures.map(sig => ({
+      id: sig.id,
+      signerName: sig.signer_name,
+      positionX: sig.position_x,
+      positionY: sig.position_y,
+      status: sig.status,
+      token: sig.token,
+      signatureText: sig.signature_text,
+      signatureStyle: sig.signature_style
+    }));
 
     res.json({
       success: true,
-      message: 'Signature position updated'
+      signatures: formattedSignatures
     });
+
   } catch (error) {
-    console.error(error);
+    console.error('Get signatures error:', error);
     res.status(500).json({
       success: false,
       message: 'Server error'
@@ -298,32 +258,9 @@ const updateSignaturePosition = async (req, res) => {
 };
 
 // @desc    Delete signature
-// @route   DELETE /api/signatures/:id
-// @access  Private
 const deleteSignature = async (req, res) => {
   try {
     const { id } = req.params;
-
-    const { data: signature, error: findError } = await supabase
-      .from('signatures')
-      .select('*, documents(*)')
-      .eq('id', id)
-      .single();
-
-    if (findError || !signature) {
-      return res.status(404).json({
-        success: false,
-        message: 'Signature not found'
-      });
-    }
-
-    // Verify ownership
-    if (signature.documents.owner_id !== req.user.id) {
-      return res.status(403).json({
-        success: false,
-        message: 'Unauthorized'
-      });
-    }
 
     const { error } = await supabase
       .from('signatures')
@@ -332,24 +269,9 @@ const deleteSignature = async (req, res) => {
 
     if (error) throw error;
 
-    // Update document required signatures count
-    await supabase
-      .from('documents')
-      .update({
-        required_signatures: supabase.raw('required_signatures - 1')
-      })
-      .eq('id', signature.document_id);
-
-    res.json({
-      success: true,
-      message: 'Signature deleted successfully'
-    });
+    res.json({ success: true, message: 'Signature deleted' });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error'
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -357,6 +279,5 @@ module.exports = {
   createSignature,
   getDocumentSignatures,
   submitSignature,
-  updateSignaturePosition,
   deleteSignature
 };

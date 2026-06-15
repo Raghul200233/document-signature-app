@@ -5,7 +5,6 @@ const {
   createSignature,
   getDocumentSignatures,
   submitSignature,
-  updateSignaturePosition,
   deleteSignature
 } = require('../controllers/signatureController');
 
@@ -16,7 +15,6 @@ router.post('/:token/sign', submitSignature);
 router.use(protect);
 router.post('/', createSignature);
 router.get('/document/:documentId', getDocumentSignatures);
-router.put('/:id', updateSignaturePosition);
 router.delete('/:id', deleteSignature);
 
 module.exports = router;

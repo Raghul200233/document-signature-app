@@ -1,24 +1,34 @@
 import { useState } from 'react';
 
 const SIGNATURE_STYLES = [
-  { id: 'classic', name: 'Classic', icon: '✍️', font: 'cursive', style: 'font-family: "Brush Script MT", cursive;' },
-  { id: 'elegant', name: 'Elegant', icon: '🖋️', font: 'Georgia', style: 'font-family: Georgia, serif; font-style: italic;' },
-  { id: 'modern', name: 'Modern', icon: '✨', font: 'Arial', style: 'font-family: Arial, sans-serif; font-weight: bold;' },
-  { id: 'handwritten', name: 'Handwritten', icon: '📝', font: '"Comic Sans MS", cursive', style: 'font-family: "Comic Sans MS", cursive;' },
-  { id: 'formal', name: 'Formal', icon: '📜', font: '"Times New Roman", serif', style: 'font-family: "Times New Roman", serif;' },
-  { id: 'minimal', name: 'Minimal', icon: '○', font: 'Arial', style: 'font-family: Arial, sans-serif; font-weight: 300; letter-spacing: 2px;' },
-  { id: 'bold', name: 'Bold', icon: '💪', font: 'Impact', style: 'font-family: Impact, sans-serif; letter-spacing: 1px;' },
-  { id: 'script', name: 'Script', icon: '✒️', font: '"Lucida Handwriting", cursive', style: 'font-family: "Lucida Handwriting", cursive;' },
-  { id: 'vintage', name: 'Vintage', icon: '🎩', font: '"Courier New", monospace', style: 'font-family: "Courier New", monospace; text-transform: uppercase;' },
-  { id: 'artistic', name: 'Artistic', icon: '🎨', font: '"Palatino Linotype", serif', style: 'font-family: "Palatino Linotype", serif; font-style: italic; font-weight: bold;' },
-  { id: 'signature', name: 'Signature', icon: '📄', font: '"Segoe Script", cursive', style: 'font-family: "Segoe Script", cursive;' },
-  { id: 'clean', name: 'Clean', icon: '🧼', font: 'Verdana', style: 'font-family: Verdana, sans-serif; font-weight: 500;' },
-  { id: 'stylish', name: 'Stylish', icon: '💎', font: '"Century Gothic", sans-serif', style: 'font-family: "Century Gothic", sans-serif; text-transform: uppercase; letter-spacing: 3px;' },
-  { id: 'playful', name: 'Playful', icon: '🎈', font: '"Comic Neue", cursive', style: 'font-family: "Comic Neue", cursive; font-weight: bold;' },
-  { id: 'professional', name: 'Professional', icon: '💼', font: 'Calibri', style: 'font-family: Calibri, sans-serif; font-weight: 600;' }
+  { id: 'classic', name: 'Classic', icon: '✍️', fontFamily: '"Brush Script MT", cursive', fontStyle: 'normal' },
+  { id: 'elegant', name: 'Elegant', icon: '🖋️', fontFamily: 'Georgia, serif', fontStyle: 'italic' },
+  { id: 'modern', name: 'Modern', icon: '✨', fontFamily: 'Arial, sans-serif', fontStyle: 'normal', fontWeight: 'bold' },
+  { id: 'handwritten', name: 'Handwritten', icon: '📝', fontFamily: '"Comic Sans MS", cursive', fontStyle: 'normal' },
+  { id: 'formal', name: 'Formal', icon: '📜', fontFamily: '"Times New Roman", serif', fontStyle: 'normal' },
+  { id: 'minimal', name: 'Minimal', icon: '○', fontFamily: 'Arial, sans-serif', fontStyle: 'normal', fontWeight: '300', letterSpacing: '2px' },
+  { id: 'bold', name: 'Bold', icon: '💪', fontFamily: 'Impact, sans-serif', fontStyle: 'normal', letterSpacing: '1px' },
+  { id: 'script', name: 'Script', icon: '✒️', fontFamily: '"Lucida Handwriting", cursive', fontStyle: 'normal' },
+  { id: 'vintage', name: 'Vintage', icon: '🎩', fontFamily: '"Courier New", monospace', fontStyle: 'normal', textTransform: 'uppercase' },
+  { id: 'artistic', name: 'Artistic', icon: '🎨', fontFamily: '"Palatino Linotype", serif', fontStyle: 'italic', fontWeight: 'bold' },
+  { id: 'signature', name: 'Signature', icon: '📄', fontFamily: '"Segoe Script", cursive', fontStyle: 'normal' },
+  { id: 'clean', name: 'Clean', icon: '🧼', fontFamily: 'Verdana, sans-serif', fontStyle: 'normal', fontWeight: '500' },
+  { id: 'stylish', name: 'Stylish', icon: '💎', fontFamily: '"Century Gothic", sans-serif', fontStyle: 'normal', textTransform: 'uppercase', letterSpacing: '3px' },
+  { id: 'playful', name: 'Playful', icon: '🎈', fontFamily: '"Comic Neue", cursive', fontStyle: 'normal', fontWeight: 'bold' },
+  { id: 'professional', name: 'Professional', icon: '💼', fontFamily: 'Calibri, sans-serif', fontStyle: 'normal', fontWeight: '600' }
 ];
 
 const SignatureStyles = ({ selectedStyle, onSelectStyle }) => {
+  // Build style object for preview
+  const getStyleObject = (style) => ({
+    fontFamily: style.fontFamily,
+    fontStyle: style.fontStyle,
+    fontWeight: style.fontWeight || 'normal',
+    textTransform: style.textTransform || 'none',
+    letterSpacing: style.letterSpacing || 'normal',
+    fontSize: '10px'
+  });
+
   return (
     <div className="grid grid-cols-5 gap-3 mb-4">
       {SIGNATURE_STYLES.map((style) => (
@@ -33,7 +43,7 @@ const SignatureStyles = ({ selectedStyle, onSelectStyle }) => {
         >
           <div className="text-2xl mb-1">{style.icon}</div>
           <div className="text-xs font-medium">{style.name}</div>
-          <div className="text-[10px] text-gray-500 mt-1" style={style.style}>
+          <div className="text-[10px] text-gray-500 mt-1" style={getStyleObject(style)}>
             Aa
           </div>
         </button>
