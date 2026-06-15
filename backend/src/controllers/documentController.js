@@ -228,6 +228,29 @@ const getDocumentById = async (req, res) => {
   }
 };
 
+// @desc    Debug - Check signature data
+// @route   GET /api/documents/:id/debug-signature
+// @access  Private
+const debugSignature = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Get signatures
+    const { data: signatures, error } = await supabase
+      .from('signatures')
+      .select('*')
+      .eq('document_id', id);
+    
+    res.json({
+      success: true,
+      signatures: signatures,
+      count: signatures?.length || 0
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
 // @desc    Get signatures for a document
 // @route   GET /api/documents/:id/signatures
 // @access  Private

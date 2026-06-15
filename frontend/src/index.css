@@ -23,6 +23,33 @@ button, [role="button"] {
   position: relative;
 }
 
+.cursor-crosshair {
+  cursor: crosshair;
+}
+
+.pointer-events-none {
+  pointer-events: none;
+}
+
+/* Ensure PDF container is visible */
+.bg-gray-100 {
+  background-color: #f3f4f6;
+}
+
+/* Draggable signature style */
+.cursor-grab {
+  cursor: grab;
+}
+
+.cursor-grab:active {
+  cursor: grabbing;
+}
+
+/* Ensure iframe is visible */
+iframe {
+  background-color: white;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

@@ -2,7 +2,7 @@ const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
 const supabase = require('../config/supabase');
 
 const getFontForStyle = async (style, pdfDoc) => {
-  const fontMap = {
+  const fonts = {
     classic: StandardFonts.Helvetica,
     elegant: StandardFonts.TimesRoman,
     modern: StandardFonts.HelveticaBold,
@@ -10,125 +10,141 @@ const getFontForStyle = async (style, pdfDoc) => {
     formal: StandardFonts.TimesRomanBold,
     script: StandardFonts.CourierOblique,
     bold: StandardFonts.HelveticaBold,
-    italic: StandardFonts.TimesRomanItalic,
-    vintage: StandardFonts.Courier,
-    artistic: StandardFonts.TimesRomanItalic
+    italic: StandardFonts.TimesRomanItalic
   };
-  
-  const fontKey = fontMap[style] || StandardFonts.Helvetica;
-  return await pdfDoc.embedFont(fontKey);
+  return await pdfDoc.embedFont(fonts[style] || StandardFonts.Helvetica);
 };
 
 const generateSignedPDFWithAllSignatures = async (documentId) => {
+  console.log('\n========== STARTING PDF GENERATION ==========');
+  console.log('Document ID:', documentId);
+  
   try {
-    console.log('Generating signed PDF for document:', documentId);
-
+    // 1. Get document
     const { data: document, error: docError } = await supabase
       .from('documents')
       .select('*')
       .eq('id', documentId)
       .single();
-
-    if (docError || !document) {
-      throw new Error('Document not found');
-    }
-
+    
+    if (docError) throw new Error('Document not found');
+    console.log('Document:', document.title);
+    
+    // 2. Get signatures
     const { data: signatures, error: sigError } = await supabase
       .from('signatures')
       .select('*')
       .eq('document_id', documentId)
       .eq('status', 'signed');
-
-    if (sigError) {
-      throw new Error('Failed to get signatures');
-    }
-
+    
+    if (sigError) throw new Error('Failed to get signatures');
     if (!signatures || signatures.length === 0) {
       throw new Error('No signed signatures found');
     }
-
-    console.log(`Found ${signatures.length} signatures to embed`);
-
-    // Download original PDF
+    
+    console.log('Found', signatures.length, 'signature(s)');
+    const signature = signatures[0];
+    console.log('Signature text:', signature.signature_text);
+    console.log('Signature style:', signature.signature_style);
+    console.log('Signature position from DB:', signature.position_x, signature.position_y);
+    console.log('Signature size from DB:', signature.width, signature.height);
+    
+    // 3. Download original PDF
     const { data: pdfData, error: downloadError } = await supabase.storage
       .from('documents')
       .download(document.file_name);
-
-    if (downloadError) {
-      throw new Error('Failed to download PDF: ' + downloadError.message);
-    }
-
+    
+    if (downloadError) throw new Error('Failed to download PDF');
+    console.log('PDF downloaded, size:', pdfData.size);
+    
+    // 4. Load PDF
     const pdfBytes = await pdfData.arrayBuffer();
     const pdfDoc = await PDFDocument.load(pdfBytes);
     
-    // Get first page
+    // 5. Get first page
     const pages = pdfDoc.getPages();
-    const firstPage = pages[0];
-    const { height } = firstPage.getSize();
-
-    // Position signature at bottom of page (Y = 100 from bottom)
-    const yPosition = 100;
-    const xPosition = 100;
-
-    // Get the first signature (or use all)
-    const signature = signatures[0];
+    if (pages.length === 0) {
+      pages.push(pdfDoc.addPage());
+    }
     
-    // Get font based on style
-    const font = await getFontForStyle(signature.signature_style, pdfDoc);
+    const page = pages[0];
+    const { width, height } = page.getSize();
+    console.log('Page size:', width, 'x', height);
     
-    // Draw the signature text
-    const signatureText = signature.signature_text || signature.signer_name;
+    // 6. Get signature text and style
+    const signatureText = signature.signature_text || signature.signer_name || 'Signature';
+    const style = signature.signature_style || 'classic';
     
-    firstPage.drawText(signatureText, {
-      x: xPosition,
-      y: yPosition,
-      size: 24,
+    // 7. USE EXACT POSITION FROM DATABASE - NO MODIFICATION
+    const xPos = signature.position_x;
+    const yPos = signature.position_y;
+    const sigWidth = signature.width || 200;
+    const sigHeight = signature.height || 60;
+    
+    console.log('Drawing signature at EXACT position:', xPos, yPos);
+    console.log('With size:', sigWidth, 'x', sigHeight);
+    
+    // 8. Calculate font size based on box height
+    const fontSize = Math.min(24, sigHeight / 2.5);
+    
+    // 9. Get font and draw signature
+    const font = await getFontForStyle(style, pdfDoc);
+    
+    // Draw the signature text at EXACT coordinates
+    page.drawText(signatureText, {
+      x: xPos,
+      y: yPos + (sigHeight / 2) - (fontSize / 2),
+      size: fontSize,
       font: font,
       color: rgb(0, 0, 0),
     });
     
-    // Draw a line under the signature
-    firstPage.drawLine({
-      start: { x: xPosition, y: yPosition - 5 },
-      end: { x: xPosition + 250, y: yPosition - 5 },
+    // Draw underline
+    const textWidth = signatureText.length * (fontSize * 0.6);
+    page.drawLine({
+      start: { x: xPos, y: yPos + (sigHeight / 2) - (fontSize / 2) - 5 },
+      end: { x: xPos + Math.min(textWidth, sigWidth - 20), y: yPos + (sigHeight / 2) - (fontSize / 2) - 5 },
       thickness: 1,
       color: rgb(0, 0, 0),
     });
-
-    // Add date below
-    const dateStr = new Date(signature.signed_at || Date.now()).toLocaleDateString();
+    
+    // Draw date
+    const dateStr = new Date().toLocaleDateString();
     const dateFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    firstPage.drawText(`Signed: ${dateStr}`, {
-      x: xPosition,
-      y: yPosition - 25,
-      size: 10,
+    page.drawText(dateStr, {
+      x: xPos,
+      y: yPos + (sigHeight / 2) - (fontSize / 2) - 20,
+      size: 8,
       font: dateFont,
       color: rgb(0.4, 0.4, 0.4),
     });
-
-    // Save signed PDF
-    const signedPdfBytes = await pdfDoc.save();
-    const signedFileName = `signed_${Date.now()}_${document.file_name}`;
     
+    console.log('Signature drawn successfully at exact position');
+    
+    // 10. Save PDF
+    const signedPdfBytes = await pdfDoc.save();
+    console.log('Signed PDF size:', signedPdfBytes.length);
+    
+    // 11. Upload to storage
+    const fileName = `signed_${Date.now()}_${document.file_name}`;
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('signed-documents')
-      .upload(signedFileName, signedPdfBytes, {
+      .upload(fileName, signedPdfBytes, {
         contentType: 'application/pdf',
-        cacheControl: '3600',
-        upsert: true
+        cacheControl: '3600'
       });
-
-    if (uploadError) {
-      console.error('Upload error:', uploadError);
-      throw uploadError;
-    }
-
+    
+    if (uploadError) throw new Error('Upload failed: ' + uploadError.message);
+    console.log('Uploaded to storage:', fileName);
+    
+    // 12. Get public URL
     const { data: { publicUrl } } = supabase.storage
       .from('signed-documents')
-      .getPublicUrl(signedFileName);
-
+      .getPublicUrl(fileName);
+    
     console.log('Signed PDF URL:', publicUrl);
-
+    
+    // 13. Update document
     await supabase
       .from('documents')
       .update({
@@ -137,15 +153,13 @@ const generateSignedPDFWithAllSignatures = async (documentId) => {
         signature_status: 'completed'
       })
       .eq('id', documentId);
-
-    return {
-      success: true,
-      signedPdfUrl: publicUrl,
-      message: 'PDF signed successfully'
-    };
-
+    
+    console.log('========== PDF GENERATION COMPLETE ==========\n');
+    
+    return { success: true, signedPdfUrl: publicUrl };
+    
   } catch (error) {
-    console.error('PDF generation error:', error);
+    console.error('PDF generation failed:', error.message);
     throw error;
   }
 };
