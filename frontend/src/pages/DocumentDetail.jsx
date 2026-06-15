@@ -12,6 +12,9 @@ const DocumentDetail = () => {
   const [showSignatureCreator, setShowSignatureCreator] = useState(false);
   const [signedPdfUrl, setSignedPdfUrl] = useState(null);
   const pdfContainerRef = useRef(null);
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [emailData, setEmailData] = useState({ name: '', email: '' });
+
 
   useEffect(() => {
     if (id) {
@@ -50,6 +53,41 @@ const DocumentDetail = () => {
     setShowSignatureCreator(false);
     fetchDocument(); // Refresh to get updated document
   };
+
+  const handleSendEmailRequest = async () => {
+  if (!emailData.name || !emailData.email) {
+    alert('Please enter name and email');
+    return;
+  }
+
+  try {
+    const token = localStorage.getItem('token');
+    const response = await fetch('http://localhost:3003/api/signatures/with-email', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        documentId: id,
+        signerName: emailData.name,
+        signerEmail: emailData.email,
+        positionX: 300,
+        positionY: 700,
+        pageNumber: 1
+      })
+    });
+
+    const data = await response.json();
+    if (data.success) {
+      alert('✅ Signature request sent to ' + emailData.email);
+      setShowEmailModal(false);
+      setEmailData({ name: '', email: '' });
+    }
+  } catch (error) {
+    alert('Failed to send request');
+  }
+};
 
   const handleDownloadSigned = () => {
     const url = signedPdfUrl || document?.signed_file_path;

@@ -226,9 +226,163 @@ const deleteSignature = async (req, res) => {
   }
 };
 
+const { sendSignatureRequest, sendSignatureCompleteNotification } = require('../services/emailService');
+
+// @desc    Create signature placement and send email
+const createSignatureWithEmail = async (req, res) => {
+  try {
+    const {
+      documentId,
+      signerName,
+      signerEmail,
+      positionX = 100,
+      positionY = 700,
+      pageNumber = 1
+    } = req.body;
+
+    console.log('Creating signature with email for:', signerEmail);
+
+    if (!documentId || !signerName || !signerEmail) {
+      return res.status(400).json({
+        success: false,
+        message: 'Document ID, signer name and email are required'
+      });
+    }
+
+    // Verify document ownership
+    const { data: document, error: docError } = await supabase
+      .from('documents')
+      .select('*, profiles(email)')
+      .eq('id', documentId)
+      .single();
+
+    if (docError || !document) {
+      return res.status(404).json({
+        success: false,
+        message: 'Document not found'
+      });
+    }
+
+    // Generate unique token
+    const token = crypto.randomBytes(32).toString('hex');
+
+    // Create signature record
+    const { data: signature, error: insertError } = await supabase
+      .from('signatures')
+      .insert({
+        document_id: documentId,
+        signer_name: signerName,
+        signer_email: signerEmail,
+        position_x: positionX,
+        position_y: positionY,
+        page_number: pageNumber,
+        status: 'pending',
+        token: token
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      console.error('Insert error:', insertError);
+      return res.status(500).json({
+        success: false,
+        message: 'Database error: ' + insertError.message
+      });
+    }
+
+    // Update document signature status and count
+    await supabase
+      .from('documents')
+      .update({ 
+        signature_status: 'in_progress',
+        required_signatures: supabase.raw('required_signatures + 1')
+      })
+      .eq('id', documentId);
+
+    // Send email to signer
+    const emailResult = await sendSignatureRequest(
+      signerEmail,
+      signerName,
+      document.title,
+      token,
+      documentId
+    );
+
+    res.status(201).json({
+      success: true,
+      signature: {
+        id: signature.id,
+        signerName: signature.signer_name,
+        signerEmail: signature.signer_email,
+        token: signature.token,
+        status: signature.status
+      },
+      emailSent: emailResult.success
+    });
+
+  } catch (error) {
+    console.error('Create signature with email error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error: ' + error.message
+    });
+  }
+};
+
+// @desc    Get signature by token (public)
+const getSignatureByToken = async (req, res) => {
+  try {
+    const { token } = req.params;
+
+    const { data: signature, error } = await supabase
+      .from('signatures')
+      .select('*, documents(*)')
+      .eq('token', token)
+      .single();
+
+    if (error || !signature) {
+      return res.status(404).json({
+        success: false,
+        message: 'Invalid or expired signature link'
+      });
+    }
+
+    if (signature.status !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        message: `This signature request is already ${signature.status}`
+      });
+    }
+
+    res.json({
+      success: true,
+      signature: {
+        id: signature.id,
+        signerName: signature.signer_name,
+        signerEmail: signature.signer_email,
+        documentId: signature.document_id,
+        documentTitle: signature.documents.title,
+        documentUrl: signature.documents.file_path,
+        positionX: signature.position_x,
+        positionY: signature.position_y,
+        status: signature.status
+      }
+    });
+
+  } catch (error) {
+    console.error('Get signature by token error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+};
+
 module.exports = {
   createSignature,
   submitSignature,
   getDocumentSignatures,
-  deleteSignature
+  deleteSignature,
+  createSignatureWithEmail,
+  getSignatureByToken
 };

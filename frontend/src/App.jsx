@@ -5,6 +5,7 @@ import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import DocumentDetail from './pages/DocumentDetail';
 import authService from './services/authService';
+import PublicSignature from './pages/PublicSignature';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -43,6 +44,7 @@ function App() {
           path="/dashboard" 
           element={isAuthenticated ? <Dashboard setIsAuthenticated={setIsAuthenticated} /> : <Navigate to="/login" />}
         />
+        <Route path="/sign/:token" element={<PublicSignature />} />
         {/* ADD THIS ROUTE - Document Detail Page */}
         <Route 
           path="/document/:id" 
