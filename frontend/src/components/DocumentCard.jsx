@@ -10,7 +10,6 @@ const DocumentCard = ({ document, onDelete, onStatusUpdate }) => {
   const [showPreview, setShowPreview] = useState(false);
   const [showStatusMenu, setShowStatusMenu] = useState(false);
 
-  // Format file size from bytes to readable format
   const formatFileSize = (bytes) => {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
@@ -19,53 +18,80 @@ const DocumentCard = ({ document, onDelete, onStatusUpdate }) => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  // Format date to readable format
   const formatDate = (date) => {
     if (!date) return 'N/A';
     return new Date(date).toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+      day: 'numeric'
     });
   };
 
-  // Handle document preview
-  const handlePreview = (e) => {
-    e.stopPropagation();
-    setShowPreview(true);
-    setShowOptions(false);
-  };
+const handlePreview = (e) => {
+  e.stopPropagation();
+  const fileUrl = document.file_path || document.filePath;
+  console.log('Preview URL:', fileUrl);
+  
+  if (!fileUrl) {
+    alert('No PDF URL available. Please try re-uploading the document.');
+    return;
+  }
+  
+  setShowPreview(true);
+  setShowOptions(false);
+};
 
-  // Handle document download
-  const handleDownload = async (e) => {
-    e.stopPropagation();
-    setDownloading(true);
-    setShowOptions(false);
+const fileUrl = document.file_path || document.filePath || document.file_url;
+
+const handleDownload = async (e) => {
+  e.stopPropagation();
+  e.preventDefault();
+  setDownloading(true);
+  setShowOptions(false);
+  
+  try {
+    const docId = document.id || document._id;
+    console.log('Downloading document:', docId);
     
-    try {
-      const response = await documentAPI.download(document.id || document._id);
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', document.original_name || document.fileName);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
+    const response = await documentAPI.download(docId);
+    
+    // Create blob from response data
+    const blob = new Blob([response.data], { type: 'application/pdf' });
+    const url = window.URL.createObjectURL(blob);
+    
+    // Create download link (using window.document to be safe)
+    const link = window.document.createElement('a');
+    link.href = url;
+    link.download = document.original_name || document.fileName || 'document.pdf';
+    
+    // Append, click, and cleanup
+    window.document.body.appendChild(link);
+    link.click();
+    
+    // Cleanup after download
+    setTimeout(() => {
+      window.document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('Download failed:', error);
-      alert('Failed to download document. Please try again.');
-    } finally {
-      setDownloading(false);
+    }, 100);
+    
+    console.log('Download successful');
+  } catch (error) {
+    console.error('Download failed:', error);
+    // Fallback: open in new tab
+    const fileUrl = document.file_path || document.filePath;
+    if (fileUrl) {
+      window.open(fileUrl, '_blank');
+    } else {
+      alert('Unable to download. Please try again later.');
     }
-  };
+  } finally {
+    setDownloading(false);
+  }
+};
 
-  // Handle document delete
   const handleDelete = async (e) => {
     e.stopPropagation();
-    if (window.confirm(`Are you sure you want to delete "${document.title}"? This action cannot be undone.`)) {
+    if (window.confirm(`Are you sure you want to delete "${document.title}"?`)) {
       try {
         await documentAPI.delete(document.id || document._id);
         onDelete(document.id || document._id);
@@ -77,7 +103,6 @@ const DocumentCard = ({ document, onDelete, onStatusUpdate }) => {
     setShowOptions(false);
   };
 
-  // Handle status update
   const handleStatusUpdate = async (e, newStatus, newSignatureStatus) => {
     e.stopPropagation();
     try {
@@ -87,30 +112,28 @@ const DocumentCard = ({ document, onDelete, onStatusUpdate }) => {
       });
       onStatusUpdate?.(document.id || document._id, newStatus, newSignatureStatus);
       setShowStatusMenu(false);
+      setShowOptions(false);
+      alert(`Status updated to ${newStatus}`);
     } catch (error) {
       console.error('Status update failed:', error);
       alert('Failed to update status. Please try again.');
     }
   };
 
-  // Navigate to document detail page
   const handleCardClick = () => {
     navigate(`/document/${document.id || document._id}`);
   };
 
-  // Get status color based on document status
   const getStatusColor = (status) => {
     const colors = {
       pending: 'bg-yellow-100 text-yellow-800',
       signed: 'bg-green-100 text-green-800',
       expired: 'bg-red-100 text-red-800',
-      cancelled: 'bg-gray-100 text-gray-800',
-      draft: 'bg-blue-100 text-blue-800'
+      cancelled: 'bg-gray-100 text-gray-800'
     };
     return colors[status] || 'bg-gray-100 text-gray-800';
   };
 
-  // Get signature status color
   const getSignatureStatusColor = (status) => {
     const colors = {
       not_started: 'bg-gray-100 text-gray-800',
@@ -121,75 +144,40 @@ const DocumentCard = ({ document, onDelete, onStatusUpdate }) => {
     return colors[status] || 'bg-gray-100 text-gray-800';
   };
 
-  // Get status icon
-  const getStatusIcon = (status) => {
-    switch(status) {
-      case 'pending':
-        return '⏳';
-      case 'signed':
-        return '✓✅';
-      case 'expired':
-        return '⌛⚠️';
-      case 'cancelled':
-        return '❌';
-      default:
-        return '📄';
-    }
-  };
-
-  // Get signature status icon
-  const getSignatureStatusIcon = (status) => {
-    switch(status) {
-      case 'not_started':
-        return '📝';
-      case 'in_progress':
-        return '✍️';
-      case 'completed':
-        return '✅';
-      case 'rejected':
-        return '❌';
-      default:
-        return '📋';
-    }
-  };
-
   return (
     <>
       <div 
         onClick={handleCardClick}
-        className="bg-white rounded-lg shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden cursor-pointer group"
+        className="bg-white rounded-lg shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden cursor-pointer group relative"
       >
-        {/* Card Header with Icon and Options */}
         <div className="p-6">
           <div className="flex items-start justify-between mb-3">
             <div className="flex items-center space-x-3 flex-1">
-              <div className="text-3xl group-hover:scale-110 transition-transform duration-200">
-                {getStatusIcon(document.status)}
-              </div>
+              <div className="text-3xl">📄</div>
               <div className="flex-1">
-                <h3 className="text-lg font-semibold text-gray-900 line-clamp-1 group-hover:text-indigo-600 transition-colors">
+                <h3 className="text-lg font-semibold text-gray-900 line-clamp-1">
                   {document.title}
                 </h3>
-                <p className="text-xs text-gray-400 mt-1">
-                  ID: {(document.id || document._id).slice(-8)}
-                </p>
               </div>
             </div>
             
-            {/* Options Menu */}
-            <div className="relative" onClick={(e) => e.stopPropagation()}>
+            {/* Options Button - Positioned relative */}
+            <div className="relative z-20" onClick={(e) => e.stopPropagation()}>
               <button
-                onClick={() => setShowOptions(!showOptions)}
-                className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100 transition-colors"
+                onClick={() => {
+                  setShowOptions(!showOptions);
+                  setShowStatusMenu(false);
+                }}
+                className="text-gray-400 hover:text-gray-600 p-2 rounded-full hover:bg-gray-100 transition-colors"
               >
                 <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
                 </svg>
               </button>
               
-              {/* Dropdown Menu */}
+              {/* Dropdown Menu - Positioned absolutely */}
               {showOptions && (
-                <div className="absolute right-0 mt-2 w-56 bg-white rounded-md shadow-lg z-10 border py-1">
+                <div className="absolute right-0 mt-2 w-56 bg-white rounded-md shadow-xl z-50 border border-gray-200 py-1">
                   <button
                     onClick={handlePreview}
                     className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center space-x-2"
@@ -198,7 +186,7 @@ const DocumentCard = ({ document, onDelete, onStatusUpdate }) => {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                     </svg>
-                    <span>Quick Preview</span>
+                    <span>Preview</span>
                   </button>
                   
                   <button
@@ -214,7 +202,7 @@ const DocumentCard = ({ document, onDelete, onStatusUpdate }) => {
                   
                   <div className="border-t my-1"></div>
                   
-                  {/* Status Update Submenu */}
+                  {/* Status Submenu */}
                   <div className="relative">
                     <button
                       onClick={() => setShowStatusMenu(!showStatusMenu)}
@@ -232,7 +220,7 @@ const DocumentCard = ({ document, onDelete, onStatusUpdate }) => {
                     </button>
                     
                     {showStatusMenu && (
-                      <div className="absolute left-full top-0 ml-1 w-48 bg-white rounded-md shadow-lg z-20 border">
+                      <div className="absolute left-full top-0 ml-1 w-48 bg-white rounded-md shadow-xl z-50 border border-gray-200 py-1">
                         <button
                           onClick={(e) => handleStatusUpdate(e, 'pending', 'not_started')}
                           className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
@@ -252,16 +240,10 @@ const DocumentCard = ({ document, onDelete, onStatusUpdate }) => {
                           ✅ Signed
                         </button>
                         <button
-                          onClick={(e) => handleStatusUpdate(e, 'pending', 'rejected')}
-                          className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
-                        >
-                          ❌ Rejected
-                        </button>
-                        <button
                           onClick={(e) => handleStatusUpdate(e, 'cancelled', 'not_started')}
                           className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
                         >
-                          🚫 Cancel
+                          ❌ Cancel
                         </button>
                       </div>
                     )}
@@ -283,29 +265,22 @@ const DocumentCard = ({ document, onDelete, onStatusUpdate }) => {
             </div>
           </div>
           
-          {/* Description */}
           {document.description && (
             <p className="text-gray-600 text-sm mb-3 line-clamp-2">
               {document.description}
             </p>
           )}
           
-          {/* Status Badges */}
           <div className="flex flex-wrap gap-2 mb-3">
-            <div className="flex items-center space-x-1">
-              <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(document.status)}`}>
-                {getStatusIcon(document.status)} {document.status}
-              </span>
-            </div>
-            <div className="flex items-center space-x-1">
-              <span className={`px-2 py-1 text-xs rounded-full ${getSignatureStatusColor(document.signature_status || document.signatureStatus)}`}>
-                {getSignatureStatusIcon(document.signature_status || document.signatureStatus)} {(document.signature_status || document.signatureStatus)?.replace('_', ' ')}
-              </span>
-            </div>
+            <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(document.status)}`}>
+              {document.status}
+            </span>
+            <span className={`px-2 py-1 text-xs rounded-full ${getSignatureStatusColor(document.signature_status || document.signatureStatus)}`}>
+              {(document.signature_status || document.signatureStatus)?.replace('_', ' ') || 'Not started'}
+            </span>
           </div>
           
-          {/* Document Metadata */}
-          <div className="text-sm text-gray-500 space-y-2">
+          <div className="text-sm text-gray-500 space-y-1">
             <div className="flex items-center justify-between">
               <span className="flex items-center space-x-1">
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -317,25 +292,9 @@ const DocumentCard = ({ document, onDelete, onStatusUpdate }) => {
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
-                <span>{formatDate(document.created_at)}</span>
+                <span>{formatDate(document.created_at || document.createdAt)}</span>
               </span>
             </div>
-            
-            {/* Signature Progress */}
-            {(document.signatures_completed !== undefined || document.required_signatures !== undefined) && (
-              <div className="mt-2">
-                <div className="flex justify-between text-xs mb-1">
-                  <span>Signature Progress</span>
-                  <span>{document.signatures_completed || 0}/{document.required_signatures || 1}</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-1.5">
-                  <div 
-                    className="bg-green-600 h-1.5 rounded-full transition-all duration-300"
-                    style={{ width: `${((document.signatures_completed || 0) / (document.required_signatures || 1)) * 100}%` }}
-                  ></div>
-                </div>
-              </div>
-            )}
           </div>
         </div>
         
@@ -343,7 +302,7 @@ const DocumentCard = ({ document, onDelete, onStatusUpdate }) => {
         <div className="bg-gray-50 px-6 py-3 border-t">
           <div className="flex justify-between items-center text-xs">
             <span className="text-gray-500">
-              {document.status === 'signed' ? '✓ Fully signed' : 'Awaiting signatures'}
+              ID: {(document.id || document._id).slice(-6)}
             </span>
             <div className="flex space-x-3">
               <button

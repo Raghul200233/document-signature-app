@@ -19,23 +19,28 @@ const uploadDocument = async (req, res) => {
     
     // Upload file to Supabase Storage
     const fileBuffer = fs.readFileSync(req.file.path);
-    const fileName = `${Date.now()}-${req.file.originalname}`;
+    const fileExt = path.extname(req.file.originalname);
+    const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}${fileExt}`;
     
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('documents')
       .upload(fileName, fileBuffer, {
         contentType: 'application/pdf',
-        cacheControl: '3600'
+        cacheControl: '3600',
+        upsert: false
       });
     
     if (uploadError) {
+      console.error('Upload error:', uploadError);
       throw uploadError;
     }
     
-    // Get public URL
+    // Get public URL - THIS IS IMPORTANT
     const { data: { publicUrl } } = supabase.storage
       .from('documents')
       .getPublicUrl(fileName);
+    
+    console.log('File uploaded, public URL:', publicUrl);
     
     // Save document metadata to database
     const { data: document, error: dbError } = await supabase
@@ -45,7 +50,7 @@ const uploadDocument = async (req, res) => {
         description: description || '',
         file_name: fileName,
         original_name: req.file.originalname,
-        file_path: publicUrl,
+        file_path: publicUrl,  // Store the public URL
         file_size: req.file.size,
         mime_type: req.file.mimetype,
         owner_id: req.user.id,
@@ -56,21 +61,14 @@ const uploadDocument = async (req, res) => {
       .single();
     
     if (dbError) {
+      console.error('DB error:', dbError);
       throw dbError;
     }
     
     // Delete local file after upload
-    fs.unlinkSync(req.file.path);
-    
-    // Create audit log
-    await supabase.from('audit_logs').insert({
-      user_id: req.user.id,
-      document_id: document.id,
-      action: 'upload',
-      details: { filename: req.file.originalname, size: req.file.size },
-      ip_address: req.ip,
-      user_agent: req.headers['user-agent']
-    });
+    if (fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
     
     res.status(201).json({
       success: true,
@@ -79,7 +77,6 @@ const uploadDocument = async (req, res) => {
     });
   } catch (error) {
     console.error('Upload error:', error);
-    // Clean up local file if exists
     if (req.file && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
     }
@@ -165,27 +162,28 @@ const getUserDocuments = async (req, res) => {
 const getDocumentById = async (req, res) => {
   try {
     const { id } = req.params;
+    
+    console.log('Fetching document with ID:', id);
+    console.log('User ID:', req.user.id);
 
     // Get document with signature count
     const { data: document, error } = await supabase
       .from('documents')
-      .select(`
-        *,
-        signatures:id (
-          id,
-          signer_email,
-          signer_name,
-          status,
-          signed_at,
-          position_x,
-          position_y,
-          page_number
-        )
-      `)
+      .select('*')
       .eq('id', id)
       .single();
     
-    if (error || !document) {
+    if (error) {
+      console.error('Supabase error:', error);
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Document not found',
+        error: error.message 
+      });
+    }
+    
+    if (!document) {
+      console.error('No document found for ID:', id);
       return res.status(404).json({ 
         success: false, 
         message: 'Document not found' 
@@ -194,25 +192,30 @@ const getDocumentById = async (req, res) => {
     
     // Check ownership
     if (document.owner_id !== req.user.id) {
+      console.error('Unauthorized - Owner:', document.owner_id, 'User:', req.user.id);
       return res.status(403).json({ 
         success: false, 
         message: 'Not authorized to access this document' 
       });
     }
     
-    // Calculate signature progress
-    const totalSignatures = document.signatures?.length || 0;
-    const completedSignatures = document.signatures?.filter(s => s.status === 'signed').length || 0;
+    console.log('Document found:', document.title);
+    
+    // Get signatures for this document
+    const { data: signatures, error: sigError } = await supabase
+      .from('signatures')
+      .select('*')
+      .eq('document_id', id);
+    
+    if (sigError) {
+      console.error('Error fetching signatures:', sigError);
+    }
     
     res.json({
       success: true,
       document: {
         ...document,
-        signature_progress: {
-          total: totalSignatures,
-          completed: completedSignatures,
-          percentage: totalSignatures > 0 ? (completedSignatures / totalSignatures) * 100 : 0
-        }
+        signatures: signatures || []
       }
     });
   } catch (error) {
@@ -225,13 +228,66 @@ const getDocumentById = async (req, res) => {
   }
 };
 
+// @desc    Get signatures for a document
+// @route   GET /api/documents/:id/signatures
+// @access  Private
+const getDocumentSignatures = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Verify ownership
+    const { data: document, error: docError } = await supabase
+      .from('documents')
+      .select('owner_id')
+      .eq('id', id)
+      .single();
+
+    if (docError || !document) {
+      return res.status(404).json({
+        success: false,
+        message: 'Document not found'
+      });
+    }
+
+    if (document.owner_id !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized'
+      });
+    }
+
+    // Get signatures
+    const { data: signatures, error } = await supabase
+      .from('signatures')
+      .select('*')
+      .eq('document_id', id)
+      .order('created_at', { ascending: true });
+
+    if (error) throw error;
+
+    res.json({
+      success: true,
+      signatures
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+};
+
 // @desc    Download document file
 // @route   GET /api/documents/:id/download
 // @access  Private
 const downloadDocument = async (req, res) => {
   try {
     const { id } = req.params;
+    
+    console.log('Download requested for document ID:', id);
 
+    // Get document from database
     const { data: document, error } = await supabase
       .from('documents')
       .select('*')
@@ -239,18 +295,23 @@ const downloadDocument = async (req, res) => {
       .single();
     
     if (error || !document) {
+      console.error('Document not found:', error);
       return res.status(404).json({ 
         success: false, 
         message: 'Document not found' 
       });
     }
     
+    // Check ownership
     if (document.owner_id !== req.user.id) {
+      console.error('Unauthorized access');
       return res.status(403).json({ 
         success: false, 
         message: 'Not authorized' 
       });
     }
+    
+    console.log('Downloading file from storage:', document.file_name);
     
     // Download from Supabase Storage
     const { data, error: downloadError } = await supabase.storage
@@ -258,22 +319,28 @@ const downloadDocument = async (req, res) => {
       .download(document.file_name);
     
     if (downloadError) {
-      throw downloadError;
+      console.error('Storage download error:', downloadError);
+      return res.status(404).json({ 
+        success: false, 
+        message: 'File not found in storage' 
+      });
     }
     
-    // Create audit log
-    await supabase.from('audit_logs').insert({
-      user_id: req.user.id,
-      document_id: document.id,
-      action: 'download',
-      details: { filename: document.original_name },
-      ip_address: req.ip,
-      user_agent: req.headers['user-agent']
-    });
+    console.log('File downloaded successfully, size:', data.size);
+    console.log('File type:', data.type);
     
+    // Convert to buffer if needed
+    const buffer = Buffer.from(await data.arrayBuffer());
+    
+    // Set correct headers
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${document.original_name}"`);
-    res.send(data);
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(document.original_name)}"`);
+    res.setHeader('Content-Length', buffer.length);
+    res.setHeader('Cache-Control', 'no-cache');
+    
+    // Send the buffer
+    return res.send(buffer);
+    
   } catch (error) {
     console.error('Download error:', error);
     res.status(500).json({ 
@@ -291,6 +358,7 @@ const deleteDocument = async (req, res) => {
   try {
     const { id } = req.params;
 
+    // Check if document exists and user owns it
     const { data: document, error: fetchError } = await supabase
       .from('documents')
       .select('*')
@@ -311,17 +379,7 @@ const deleteDocument = async (req, res) => {
       });
     }
     
-    // Delete signatures first (due to foreign key constraint)
-    const { error: sigError } = await supabase
-      .from('signatures')
-      .delete()
-      .eq('document_id', id);
-    
-    if (sigError) {
-      console.error('Error deleting signatures:', sigError);
-    }
-    
-    // Delete from database
+    // Delete document (cascade will handle audit_logs and signatures)
     const { error: deleteError } = await supabase
       .from('documents')
       .delete()
@@ -330,23 +388,9 @@ const deleteDocument = async (req, res) => {
     if (deleteError) throw deleteError;
     
     // Delete from storage
-    const { error: storageError } = await supabase.storage
+    await supabase.storage
       .from('documents')
       .remove([document.file_name]);
-    
-    if (storageError) {
-      console.error('Error deleting from storage:', storageError);
-    }
-    
-    // Create audit log
-    await supabase.from('audit_logs').insert({
-      user_id: req.user.id,
-      document_id: document.id,
-      action: 'delete',
-      details: { filename: document.original_name },
-      ip_address: req.ip,
-      user_agent: req.headers['user-agent']
-    });
     
     res.json({ 
       success: true, 
@@ -579,5 +623,6 @@ module.exports = {
   getDocumentStats,
   searchDocuments,
   getRecentDocuments,
+  getDocumentSignatures,
   getDocumentsByStatus
 };

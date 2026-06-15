@@ -11,6 +11,7 @@ const {
   updateDocumentStatus,
   getDocumentStats,
   searchDocuments,
+  getDocumentSignatures,
   getRecentDocuments
 } = require('../controllers/documentController');
 
@@ -21,6 +22,7 @@ router.use(protect);
 router.get('/stats/summary', getDocumentStats);
 router.get('/search', searchDocuments);
 router.get('/recent', getRecentDocuments);
+router.get('/:id/signatures', getDocumentSignatures);
 
 // Upload route with multer middleware
 router.post('/upload', upload.single('document'), uploadDocument);

@@ -1,3 +1,28 @@
+/* Ensure modals appear above everything */
+.z-50 {
+  z-index: 9999 !important;
+}
+
+/* Fix for dropdown menus */
+.relative {
+  isolation: isolate;
+}
+
+/* Ensure buttons are clickable */
+button, [role="button"] {
+  cursor: pointer;
+}
+
+/* Fix for overflow issues */
+.overflow-hidden {
+  overflow: visible !important;
+}
+
+/* Ensure dropdowns appear on top */
+.z-20, .z-30, .z-40, .z-50 {
+  position: relative;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

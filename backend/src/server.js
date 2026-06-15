@@ -25,9 +25,9 @@ const documentRoutes = require('./routes/documentRoutes');
 const signatureRoutes = require('./routes/signatureRoutes');
 
 // Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/documents', documentRoutes);
-app.use('/api/signatures', signatureRoutes);
+app.use('/api/auth', require('./routes/authRoutes'));
+app.use('/api/documents', require('./routes/documentRoutes'));
+app.use('/api/signatures', require('./routes/signatureRoutes'));
 
 // Health check route
 app.get('/api/health', (req, res) => {

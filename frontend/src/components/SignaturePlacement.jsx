@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import signatureAPI from '../services/signatureService';
+import signatureAPI from '../services/api';
 
 const SignaturePlacement = ({ documentId, onSignatureAdded, existingSignatures = [] }) => {
   const [showAddForm, setShowAddForm] = useState(false);
