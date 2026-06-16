@@ -1,5 +1,6 @@
 const supabase = require('../config/supabase');
 const crypto = require('crypto');
+const { logAction } = require('../services/auditService');
 
 // @desc    Create signature placement
 const createSignature = async (req, res) => {
@@ -181,6 +182,18 @@ const submitSignature = async (req, res) => {
       message: 'Server error: ' + error.message
     });
   }
+    await logAction({
+    documentId: signature.document_id,
+    userId: signature.documents?.owner_id,
+    action: 'signature_submitted',
+    details: { 
+      signer_name: signature.signer_name,
+      signer_email: signature.signer_email,
+      style: style || 'classic'
+    },
+    ipAddress: req.ip,
+    userAgent: req.headers['user-agent']
+  });
 };
 
 // @desc    Get signatures for a document

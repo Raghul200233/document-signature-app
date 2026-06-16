@@ -24,12 +24,14 @@ const authRoutes = require('./routes/authRoutes');
 const documentRoutes = require('./routes/documentRoutes');
 const signatureRoutes = require('./routes/signatureRoutes');
 const pdfRoutes = require('./routes/pdfRoutes');
+const auditRoutes = require('./routes/auditRoutes');
 
 // Routes
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/documents', require('./routes/documentRoutes'));
 app.use('/api/signatures', require('./routes/signatureRoutes'));
 app.use('/api/pdf', require('./routes/pdfRoutes'));
+app.use('/api/audit', require('./routes/auditRoutes'));
 
 // Health check route
 app.get('/api/health', (req, res) => {
