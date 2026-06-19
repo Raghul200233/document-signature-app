@@ -486,5 +486,3 @@ INSERT INTO storage.buckets (id, name, public) VALUES ('signed-documents', 'sign
 ```
 
 ---
-
-Your README is ready! Copy and paste this into your README.md file. 🚀
