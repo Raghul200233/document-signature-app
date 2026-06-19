@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
 
 const SIGNATURE_STYLES = [
-  { id: 'classic', name: 'Classic', fontFamily: 'cursive', fontSize: '32px' },
-  { id: 'elegant', name: 'Elegant', fontFamily: 'Georgia, serif', fontStyle: 'italic', fontSize: '32px' },
-  { id: 'modern', name: 'Modern', fontFamily: 'Arial, sans-serif', fontWeight: 'bold', fontSize: '32px' },
-  { id: 'handwritten', name: 'Handwritten', fontFamily: '"Comic Sans MS", cursive', fontSize: '32px' },
-  { id: 'formal', name: 'Formal', fontFamily: '"Times New Roman", serif', fontSize: '32px' },
-  { id: 'bold', name: 'Bold', fontFamily: 'Impact, sans-serif', letterSpacing: '1px', fontSize: '32px' }
+  { id: 'classic', name: 'Classic', fontFamily: 'cursive' },
+  { id: 'elegant', name: 'Elegant', fontFamily: 'Georgia, serif', fontStyle: 'italic' },
+  { id: 'modern', name: 'Modern', fontFamily: 'Arial, sans-serif', fontWeight: 'bold' },
+  { id: 'handwritten', name: 'Handwritten', fontFamily: '"Comic Sans MS", cursive' },
+  { id: 'formal', name: 'Formal', fontFamily: '"Times New Roman", serif' },
+  { id: 'bold', name: 'Bold', fontFamily: 'Impact, sans-serif', letterSpacing: '1px' }
 ];
 
 const DraggableSignature = ({ pdfContainerRef, onSave, onCancel, documentId, onSigned }) => {
@@ -26,7 +26,7 @@ const DraggableSignature = ({ pdfContainerRef, onSave, onCancel, documentId, onS
 
   const getStyleObject = () => ({
     fontFamily: selectedStyle.fontFamily,
-    fontSize: selectedStyle.fontSize,
+    fontSize: '32px',
     fontWeight: selectedStyle.fontWeight || 'normal',
     fontStyle: selectedStyle.fontStyle || 'normal',
     letterSpacing: selectedStyle.letterSpacing || 'normal',
@@ -145,91 +145,89 @@ const DraggableSignature = ({ pdfContainerRef, onSave, onCancel, documentId, onS
       return;
     }
     setIsPlaced(true);
-    // Center the signature on the PDF
+    // Center the signature on the screen
     const containerRect = pdfContainerRef.current?.getBoundingClientRect();
     if (containerRect) {
       setPosition({
-        x: containerRect.left + (containerRect.width / 2) - 100,
-        y: containerRect.top + (containerRect.height / 2) - 50
+        x: window.innerWidth / 2 - 100,
+        y: window.innerHeight / 2 - 50
       });
     }
   };
 
-const handleSave = async () => {
-  if (!isPlaced) {
-    alert('Please place your signature on the PDF first');
-    return;
-  }
-
-  setIsSaving(true);
-  try {
-    // Get the exact position where the signature is placed
-    const containerRect = pdfContainerRef.current?.getBoundingClientRect();
-    const signatureRect = signatureRef.current?.getBoundingClientRect();
-    
-    if (!containerRect || !signatureRect) {
-      throw new Error('Could not determine position');
+  const handleSave = async () => {
+    if (!isPlaced) {
+      alert('Please place your signature on the PDF first');
+      return;
     }
-    
-    // Calculate relative position within the PDF container
-    const relativeX = signatureRect.left - containerRect.left;
-    const relativeY = signatureRect.top - containerRect.top;
-    const sigWidth = signatureRect.width;
-    const sigHeight = signatureRect.height;
-    
-    console.log('Saving signature at:', { 
-      relativeX, 
-      relativeY, 
-      sigWidth, 
-      sigHeight,
-      containerRect,
-      signatureRect
-    });
 
-    const token = localStorage.getItem('token');
-    
-    const createResponse = await fetch('http://localhost:3003/api/signatures', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify({
-        documentId: documentId,
-        signerName: name,
-        positionX: Math.round(relativeX),
-        positionY: Math.round(relativeY),
-        width: Math.round(sigWidth),
-        height: Math.round(sigHeight),
-        pageNumber: 1
-      })
-    });
+    setIsSaving(true);
+    try {
+      // Get the exact position where the signature is placed
+      const containerRect = pdfContainerRef.current?.getBoundingClientRect();
+      const signatureRect = signatureRef.current?.getBoundingClientRect();
+      
+      if (!containerRect || !signatureRect) {
+        throw new Error('Could not determine position');
+      }
+      
+      // Calculate relative position within the PDF container
+      const relativeX = Math.max(0, signatureRect.left - containerRect.left);
+      const relativeY = Math.max(0, signatureRect.top - containerRect.top);
+      const sigWidth = signatureRect.width;
+      const sigHeight = signatureRect.height;
+      
+      console.log('Saving signature at:', { 
+        relativeX, 
+        relativeY, 
+        sigWidth, 
+        sigHeight
+      });
 
-    const createData = await createResponse.json();
-    if (!createData.success) throw new Error(createData.message);
+      const token = localStorage.getItem('token');
+      
+      const createResponse = await fetch('http://localhost:3003/api/signatures', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          documentId: documentId,
+          signerName: name,
+          positionX: Math.round(relativeX),
+          positionY: Math.round(relativeY),
+          width: Math.round(sigWidth),
+          height: Math.round(sigHeight),
+          pageNumber: 1
+        })
+      });
 
-    const submitResponse = await fetch(`http://localhost:3003/api/signatures/${createData.signature.token}/sign`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        signatureText: name,
-        style: selectedStyle.id
-      })
-    });
+      const createData = await createResponse.json();
+      if (!createData.success) throw new Error(createData.message);
 
-    const submitData = await submitResponse.json();
-    if (submitData.success) {
-      alert('✅ Document signed successfully!');
-      if (onSigned) onSigned(submitData.signedPdfUrl);
-      if (onSave) onSave();
+      const submitResponse = await fetch(`http://localhost:3003/api/signatures/${createData.signature.token}/sign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          signatureText: name,
+          style: selectedStyle.id
+        })
+      });
+
+      const submitData = await submitResponse.json();
+      if (submitData.success) {
+        alert('✅ Document signed successfully!');
+        if (onSigned) onSigned(submitData.signedPdfUrl);
+        if (onSave) onSave();
+      }
+    } catch (error) {
+      console.error('Failed to save:', error);
+      alert('❌ Failed to save signature: ' + error.message);
+    } finally {
+      setIsSaving(false);
     }
-  } catch (error) {
-    console.error('Failed to save:', error);
-    alert('❌ Failed to save signature: ' + error.message);
-  } finally {
-    setIsSaving(false);
-  }
-};
+  };
 
   return (
     <>
@@ -291,17 +289,17 @@ const handleSave = async () => {
         </div>
       )}
 
-      {/* Draggable Signature Overlay */}
+      {/* Draggable Signature Overlay - THIS IS WHAT YOU DRAG */}
       {isPlaced && (
         <>
           {/* Instruction overlay */}
           <div className="fixed inset-0 bg-black bg-opacity-30 z-[10001] pointer-events-none">
             <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-indigo-600 text-white px-6 py-3 rounded-lg shadow-lg">
-              ✍️ Drag to position | Drag corners to resize | Click Save when done
+              ✍️ Drag your signature to the desired position on the PDF | Drag corners to resize
             </div>
           </div>
           
-          {/* Draggable/Resizable Signature */}
+          {/* Draggable Signature - This is clickable and draggable */}
           <div
             ref={signatureRef}
             onMouseDown={handleMouseDown}
@@ -315,7 +313,7 @@ const handleSave = async () => {
           >
             <div style={getStyleObject()}>
               {name}
-              <div className="text-xs text-gray-400 text-center mt-1">Drag me</div>
+              <div className="text-xs text-gray-400 text-center mt-1">Drag to position</div>
             </div>
             
             {/* Resize Handles */}

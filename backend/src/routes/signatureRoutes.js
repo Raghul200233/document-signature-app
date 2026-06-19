@@ -7,7 +7,8 @@ const {
   getDocumentSignatures,
   submitSignature,
   deleteSignature,
-  getSignatureByToken
+  getSignatureByToken,
+  createAndSubmitSignature
 } = require('../controllers/signatureController');
 
 // Public routes (no authentication needed)
@@ -20,5 +21,6 @@ router.post('/', createSignature);
 router.post('/with-email', createSignatureWithEmail);
 router.get('/document/:documentId', getDocumentSignatures);
 router.delete('/:id', deleteSignature);
+router.post('/quick-sign', createAndSubmitSignature);
 
 module.exports = router;

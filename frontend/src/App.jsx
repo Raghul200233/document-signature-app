@@ -4,8 +4,8 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import DocumentDetail from './pages/DocumentDetail';
-import authService from './services/authService';
 import PublicSignature from './pages/PublicSignature';
+import authService from './services/authService';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -24,7 +24,10 @@ function App() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-xl">Loading...</div>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
       </div>
     );
   }
@@ -32,24 +35,11 @@ function App() {
   return (
     <Router>
       <Routes>
-        <Route 
-          path="/login" 
-          element={!isAuthenticated ? <Login setIsAuthenticated={setIsAuthenticated} /> : <Navigate to="/dashboard" />}
-        />
-        <Route 
-          path="/register" 
-          element={!isAuthenticated ? <Register setIsAuthenticated={setIsAuthenticated} /> : <Navigate to="/dashboard" />}
-        />
-        <Route 
-          path="/dashboard" 
-          element={isAuthenticated ? <Dashboard setIsAuthenticated={setIsAuthenticated} /> : <Navigate to="/login" />}
-        />
+        <Route path="/login" element={!isAuthenticated ? <Login setIsAuthenticated={setIsAuthenticated} /> : <Navigate to="/dashboard" />} />
+        <Route path="/register" element={!isAuthenticated ? <Register setIsAuthenticated={setIsAuthenticated} /> : <Navigate to="/dashboard" />} />
+        <Route path="/dashboard" element={isAuthenticated ? <Dashboard setIsAuthenticated={setIsAuthenticated} /> : <Navigate to="/login" />} />
+        <Route path="/document/:id" element={isAuthenticated ? <DocumentDetail /> : <Navigate to="/login" />} />
         <Route path="/sign/:token" element={<PublicSignature />} />
-        {/* ADD THIS ROUTE - Document Detail Page */}
-        <Route 
-          path="/document/:id" 
-          element={isAuthenticated ? <DocumentDetail /> : <Navigate to="/login" />}
-        />
         <Route path="/" element={<Navigate to="/dashboard" />} />
       </Routes>
     </Router>
